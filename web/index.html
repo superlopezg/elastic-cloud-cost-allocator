@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Elastic Cloud Cost Allocator | Dot &amp; Key</title>
+  <meta name="description" content="Allocate Elastic Cloud (ECU) costs across index families using measured hot/frozen storage share. Open template by Dot & Key Consulting.">
+  <link rel="icon" href="https://dotandkey.es/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="brand" href="https://dotandkey.es/es/" target="_blank" rel="noopener noreferrer" title="Dot & Key Consulting">
+        <img src="./logo-color.png" alt="Dot & Key Consulting" width="44" height="44">
+        <span>
+          <strong>Dot &amp; Key</strong>
+          <small>Consulting</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <a class="btn btn--ghost btn--sm" href="https://dotandkey.es/es/" target="_blank" rel="noopener noreferrer">Website</a>
+        <a class="btn btn--secondary btn--sm" href="https://github.com/superlopezg/elastic-cloud-cost-allocator" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a class="btn btn--primary btn--sm" href="https://dotandkey.es/es/contacto/" target="_blank" rel="noopener noreferrer">Talk to us</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <div class="eyebrow">Open FinOps tool · Elastic Cloud</div>
+      <h1>Elastic Cloud <em>Cost Allocator</em></h1>
+      <p>
+        Charge back ECU spend to index families and data streams using measured hot / frozen share —
+        with optional platform &amp; admin surcharge and annual commit coverage. Sample data is fictional; replace it with yours.
+      </p>
+      <div class="kpis">
+        <div class="kpi"><span>Chargeback / month</span><strong id="kpi-ecu-month">—</strong><small>with admin surcharge</small></div>
+        <div class="kpi"><span>Chargeback / year</span><strong id="kpi-ecu-year">—</strong><small>× 12</small></div>
+        <div class="kpi"><span>Computed surcharge</span><strong id="kpi-surcharge">—</strong><small>PRE + PRO uplift</small></div>
+        <div class="kpi"><span>Measured hot</span><strong id="kpi-hot">—</strong><small id="kpi-families">0 families</small></div>
+      </div>
+    </div>
+  </section>
+
+  <main class="container">
+    <nav class="tabs" aria-label="Calculator sections">
+      <button class="tab is-active" data-tab="parameters" type="button">Parameters</button>
+      <button class="tab" data-tab="measurement" type="button">Measurement</button>
+      <button class="tab" data-tab="allocations" type="button">Allocations</button>
+      <button class="tab" data-tab="workloads" type="button">Workloads</button>
+      <button class="tab" data-tab="any" type="button">Any family</button>
+    </nav>
+
+    <!-- PARAMETERS -->
+    <section class="panel is-active" id="panel-parameters">
+      <div class="card">
+        <h2>Parameters</h2>
+        <p class="lede">Yellow-style fields are editable (same idea as the Excel). Rates are illustrative sample ECU/h — replace with your Elastic Cloud console / invoice figures.</p>
+        <div class="grid-4">
+          <div class="field editable"><label>Hours / month</label><input data-param="hoursMonth" type="number" step="1"></div>
+          <div class="field editable"><label>Annual ECU commit</label><input data-param="annualCommit" type="number" step="1"></div>
+          <div class="field editable"><label>Margin on commit</label><input data-param="margin" type="number" step="0.01"></div>
+          <div class="field editable"><label>Other ECU / year (egress + snapshot API)</label><input data-param="otherAnnual" type="number" step="1"></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>ECU / hour rates</h2>
+          <p class="lede">Hot, frozen and platform components per environment.</p>
+          <div class="grid-3">
+            <div class="field editable"><label>Hot PRE</label><input data-param="hot.PRE" type="number" step="any"></div>
+            <div class="field editable"><label>Hot PRO</label><input data-param="hot.PRO" type="number" step="any"></div>
+            <div class="field editable"><label>Hot / Monitoring</label><input data-param="hot.MON" type="number" step="any"></div>
+            <div class="field editable"><label>Frozen PRE</label><input data-param="frozen.PRE" type="number" step="any"></div>
+            <div class="field editable"><label>Frozen PRO</label><input data-param="frozen.PRO" type="number" step="any"></div>
+            <div class="field editable"><label>Frozen MON</label><input data-param="frozen.MON" type="number" step="any"></div>
+            <div class="field editable"><label>Kibana PRE</label><input data-param="kibana.PRE" type="number" step="any"></div>
+            <div class="field editable"><label>Kibana PRO</label><input data-param="kibana.PRO" type="number" step="any"></div>
+            <div class="field editable"><label>Integrations PRE</label><input data-param="integrations.PRE" type="number" step="any"></div>
+            <div class="field editable"><label>Integrations PRO</label><input data-param="integrations.PRO" type="number" step="any"></div>
+            <div class="field editable"><label>Tiebreaker PRO</label><input data-param="tiebreaker.PRO" type="number" step="any"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Snapshots ECU / month</h2>
+          <p class="lede">Closed-month snapshot bill, allocated by frozen share (or hot share if frozen is empty).</p>
+          <div class="grid-3">
+            <div class="field editable"><label>PRE</label><input data-param="snapshots.PRE" type="number" step="any"></div>
+            <div class="field editable"><label>PRO</label><input data-param="snapshots.PRO" type="number" step="any"></div>
+            <div class="field editable"><label>MON</label><input data-param="snapshots.MON" type="number" step="any"></div>
+          </div>
+          <hr style="border:0;border-top:1px solid var(--dk-line);margin:1rem 0">
+          <div class="grid-2">
+            <div><span class="hint">Computed surcharge</span><div style="font-size:1.6rem;font-weight:700;color:var(--dk-teal-dark)" id="out-surcharge">—</div></div>
+            <div><span class="hint">Annual target (commit × margin)</span><div style="font-size:1.2rem;font-weight:700" id="out-objetivo">—</div></div>
+            <div><span class="hint">Estimated consumption</span><div id="out-consumo">—</div></div>
+            <div><span class="hint">Platform annual</span><div id="out-platform">—</div></div>
+            <div><span class="hint">Monitoring annual</span><div id="out-mon">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Cluster usage from Measurement</h2>
+        <p class="lede">Auto-summed denominators used for share calculation.</p>
+        <div class="grid-3">
+          <div><span class="hint">GB hot PRE / PRO / MON</span><div><strong id="out-hot-pre">—</strong> / <strong id="out-hot-pro">—</strong> / <strong id="out-hot-mon">—</strong></div></div>
+          <div><span class="hint">GB frozen PRE / PRO / MON</span><div><strong id="out-frz-pre">—</strong> / <strong id="out-frz-pro">—</strong> / <strong id="out-frz-mon">—</strong></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MEASUREMENT -->
+    <section class="panel" id="panel-measurement">
+      <div class="card">
+        <h2>Measurement</h2>
+        <p class="lede">One row per index family / data-stream pattern. Click any cell to edit. Import CSV to replace the sample data with your cluster inventory.</p>
+        <div class="toolbar">
+          <button class="btn btn--primary btn--sm" id="btn-add-row" type="button">+ Add family</button>
+          <button class="btn btn--secondary btn--sm" id="btn-import-csv" type="button">Import CSV</button>
+          <button class="btn btn--secondary btn--sm" id="btn-export-csv" type="button">Export CSV</button>
+          <button class="btn btn--ghost btn--sm" id="btn-reset-sample" type="button">Reset sample</button>
+          <input id="file-csv" type="file" accept=".csv,text/csv" hidden>
+          <div class="spacer"></div>
+          <select id="filter-env">
+            <option value="ALL">All envs</option>
+            <option value="PRE">PRE</option>
+            <option value="PRO">PRO</option>
+            <option value="MON">MON</option>
+          </select>
+          <input id="search-family" type="search" placeholder="Search family…" style="min-width:180px;border:1px solid var(--dk-line);border-radius:8px;padding:.45rem .65rem;font:inherit">
+          <span class="hint" id="meas-count"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Family</th><th>Env</th><th>What</th>
+                <th>Events/s 15m</th><th>KB/doc</th><th>Docs</th>
+                <th>GB hot</th><th>GB frozen</th><th>Indices</th>
+                <th>Events/s life</th><th>Age days</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="meas-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ALLOCATIONS -->
+    <section class="panel" id="panel-allocations">
+      <div class="toolbar">
+        <button class="btn btn--secondary btn--sm" id="btn-export-alloc" type="button">Export allocation CSV</button>
+        <span class="hint">Sorted by ECU/month descending</span>
+      </div>
+      <div class="card">
+        <h2>Without admin cost</h2>
+        <p class="lede">Pure Elastic capacity + snapshots share. No commit / platform uplift.</p>
+        <div id="alloc-without"></div>
+      </div>
+      <div class="card">
+        <h2>With admin cost</h2>
+        <p class="lede">Same allocation plus PRE/PRO surcharge that covers platform gap, egress/API, peak buffer and ops margin.</p>
+        <div id="alloc-with"></div>
+      </div>
+    </section>
+
+    <!-- WORKLOADS -->
+    <section class="panel" id="panel-workloads">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Sample Cloud Apps</h2>
+          <p class="lede">Group several Measurement families into one chargeback story (cloud Kubernetes app logs).</p>
+          <select id="cloud-add"></select>
+          <div class="chips" id="cloud-chips"></div>
+          <div class="grid-2" style="margin-top:1rem">
+            <div><span class="hint">GB hot</span><div><strong id="cloud-gbhot">—</strong></div></div>
+            <div><span class="hint">GB frozen</span><div><strong id="cloud-gbfrozen">—</strong></div></div>
+            <div><span class="hint">ECU / month</span><div class="money" id="cloud-ecumo">—</div></div>
+            <div><span class="hint">ECU / year</span><div class="money" id="cloud-ecuyr">—</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Sample OnPrem Apps</h2>
+          <p class="lede">Same pattern for on-prem Kubernetes application logs.</p>
+          <select id="onprem-add"></select>
+          <div class="chips" id="onprem-chips"></div>
+          <div class="grid-2" style="margin-top:1rem">
+            <div><span class="hint">GB hot</span><div><strong id="onprem-gbhot">—</strong></div></div>
+            <div><span class="hint">GB frozen</span><div><strong id="onprem-gbfrozen">—</strong></div></div>
+            <div><span class="hint">ECU / month</span><div class="money" id="onprem-ecumo">—</div></div>
+            <div><span class="hint">ECU / year</span><div class="money" id="onprem-ecuyr">—</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANY FAMILY -->
+    <section class="panel" id="panel-any">
+      <div class="card">
+        <h2>Any family — step by step</h2>
+        <p class="lede">Pick one Measurement family and walk through the same ECU calculation as the Excel “Any Family” sheet.</p>
+        <div class="field" style="max-width:420px;margin-bottom:1rem">
+          <label>Family</label>
+          <select id="any-family"></select>
+        </div>
+        <div class="steps" id="any-steps"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <img src="./logo-color.png" alt="" width="28" height="28">
+        <div>
+          <strong>Dot &amp; Key Consulting</strong>
+          <div>Observability, OpenTelemetry &amp; automation · <a href="https://dotandkey.es/es/" target="_blank" rel="noopener noreferrer">dotandkey.es</a></div>
+        </div>
+      </div>
+      <div>
+        Open source MIT ·
+        <a href="https://github.com/superlopezg/elastic-cloud-cost-allocator" target="_blank" rel="noopener noreferrer">GitHub</a>
+        · Sample data is fictional
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="./seed.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -2,11 +2,21 @@
 
 **Allocate Elastic Cloud (ECU) spend across index families and data streams** using measured hot/frozen storage share — with optional platform/admin surcharge and annual commit coverage.
 
-> Spreadsheet tool for SRE, FinOps, and observability teams who need a transparent, auditable way to charge back Elastic Cloud cost to workloads.
+> Spreadsheet **and** web UI for SRE, FinOps, and observability teams who need a transparent, auditable way to charge back Elastic Cloud cost to workloads.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Excel](https://img.shields.io/badge/format-Excel%20.xlsx-green.svg)
+![HTML](https://img.shields.io/badge/web-HTML%20UI-teal.svg)
 ![Status](https://img.shields.io/badge/sample%20data-fictional-orange.svg)
+
+### Try the web UI
+
+Open [`web/index.html`](./web/index.html) in a browser (or serve the `web/` folder). Styled like [dotandkey.es](https://dotandkey.es) with logo + link to the site.
+
+```bash
+cd web && python -m http.server 8765
+# → http://localhost:8765
+```
 
 ---
 
@@ -99,7 +109,13 @@ elastic-cloud-cost-allocator/
 ├── LICENSE
 ├── CONTRIBUTING.md
 ├── .gitignore
-└── elastic-cloud-cost-allocator.xlsx
+├── elastic-cloud-cost-allocator.xlsx
+└── web/
+    ├── index.html      # interactive calculator (Dot & Key look)
+    ├── styles.css
+    ├── app.js
+    ├── seed.js         # fictional sample Measurement rows
+    └── logo-color.png
 ```
 
 ---

@@ -129,4 +129,4 @@ MIT — see [LICENSE](./LICENSE).
 ## Credits
 
 Built as an open template for Elastic observability FinOps / chargeback workflows.  
-Maintainer: [connosco2011](https://github.com/connosco2011)
+Maintainer: [superlopezg](https://github.com/superlopezg)

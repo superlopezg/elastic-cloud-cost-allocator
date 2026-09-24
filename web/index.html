@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Elastic Cloud Cost Allocator | Dot &amp; Key</title>
-  <meta name="description" content="Allocate Elastic Cloud (ECU) costs across index families using measured hot/frozen storage share. Open template by Dot & Key Consulting.">
+  <title>Elastic Cost Allocator | Dot &amp; Key</title>
+  <meta name="description" content="Allocate Elastic Cloud or on-prem costs across index families using configurable storage tiers (hot/warm/cold/frozen). Open template by Dot & Key Consulting.">
   <link rel="icon" href="https://dotandkey.es/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,11 +35,11 @@
 
   <section class="hero">
     <div class="container">
-      <div class="eyebrow" data-i18n="hero.eyebrow">Open FinOps tool · Elastic Cloud</div>
-      <h1 data-i18n="hero.title" data-i18n-mode="html">Elastic Cloud <em>Cost Allocator</em></h1>
+      <div class="eyebrow" data-i18n="hero.eyebrow">Open FinOps tool · Elastic Cloud &amp; on-prem</div>
+      <h1 data-i18n="hero.title" data-i18n-mode="html">Elastic <em>Cost Allocator</em></h1>
       <p data-i18n="hero.lede">
-        Charge back ECU spend to index families and data streams using measured hot / frozen share —
-        with optional platform &amp; admin surcharge and annual commit coverage. Sample data is fictional; replace it with yours.
+        Charge back Elastic spend to index families using measured storage share across configurable tiers
+        (hot / warm / cold / frozen — or hot-only). Works for Elastic Cloud and on-premises. Sample data is fictional; replace it with yours.
       </p>
       <div class="kpis">
         <div class="kpi"><span data-i18n="kpi.month">Chargeback / month</span><strong id="kpi-ecu-month">—</strong><small data-i18n="kpi.month.sub">with admin surcharge</small></div>
@@ -64,27 +64,92 @@
     <section class="panel is-active" id="panel-howto">
       <div class="card">
         <h2 data-i18n="howto.title">How to use this calculator</h2>
-        <p class="lede" data-i18n="howto.lede">Same logic as the Excel workbook. Follow these steps, then explore Parameters, Measurement and Allocations.</p>
-        <div class="howto-grid">
-          <article class="howto-step"><span class="howto-n">1</span><div><strong data-i18n="howto.s1.t">Open Parameters</strong><p data-i18n="howto.s1.d">Enter your Elastic Cloud rates (ECU/h), snapshot monthly costs, hours/month and annual ECU commit. Yellow fields are editable.</p></div></article>
-          <article class="howto-step"><span class="howto-n">2</span><div><strong data-i18n="howto.s2.t">Fill Measurement</strong><p data-i18n="howto.s2.d">Add one row per index family or data-stream pattern with GB hot, GB frozen and an environment code from Parameters. Or import a CSV.</p></div></article>
-          <article class="howto-step"><span class="howto-n">3</span><div><strong data-i18n="howto.s3.t">Read Allocations</strong><p data-i18n="howto.s3.d">See the ECU/month share per family without admin cost, and with surcharge on environments marked for commit uplift.</p></div></article>
-          <article class="howto-step"><span class="howto-n">4</span><div><strong data-i18n="howto.s4.t">Group workloads</strong><p data-i18n="howto.s4.d">In Workloads, pick several families for a business owner (e.g. cloud app logs) and get a rolled-up chargeback.</p></div></article>
-          <article class="howto-step"><span class="howto-n">5</span><div><strong data-i18n="howto.s5.t">Inspect one family</strong><p data-i18n="howto.s5.d">Any family walks through the same 16 calculation steps as the Excel sheet — useful for audits and explanations.</p></div></article>
+        <p class="lede" data-i18n="howto.lede">Same model as the Excel workbook. Configure your topology once, paste measured GB, then read the chargeback. Yellow cells are the ones you edit.</p>
+
+        <div class="howto-legend" role="note">
+          <span class="howto-swatch" aria-hidden="true"></span>
+          <div>
+            <strong data-i18n="howto.yellow.t">Yellow = editable</strong>
+            <p data-i18n="howto.yellow.d">Every yellow field or table cell can be changed. White / calculated values update automatically. Your edits stay in this browser until you reset or clear site data.</p>
+          </div>
         </div>
       </div>
+
+      <div class="card">
+        <h2 data-i18n="howto.glossary.title">What each block means</h2>
+        <p class="lede" data-i18n="howto.glossary.lede">Open Parameters first. The four ideas below are the whole model.</p>
+        <div class="howto-glossary">
+          <article class="howto-gloss">
+            <h3 data-i18n="howto.g.global.t">1 · Global contract</h3>
+            <ul>
+              <li data-i18n="howto.g.global.dep" data-i18n-mode="html"><strong>Deployment</strong> — Elastic Cloud or on-premises (labels and default unit adapt).</li>
+              <li data-i18n="howto.g.global.unit" data-i18n-mode="html"><strong>Cost unit</strong> — ECU, EUR, USD… used in all totals.</li>
+              <li data-i18n="howto.g.global.hours" data-i18n-mode="html"><strong>Hours / month</strong> — usually 730; multiplies hourly rates.</li>
+              <li data-i18n="howto.g.global.commit" data-i18n-mode="html"><strong>Annual commit / budget</strong> — Cloud commit or on-prem license/budget target.</li>
+              <li data-i18n="howto.g.global.margin" data-i18n-mode="html"><strong>Margin</strong> — uplift on that target (e.g. 0.03 = +3%).</li>
+              <li data-i18n="howto.g.global.other" data-i18n-mode="html"><strong>Other annual</strong> — extras (egress, snapshot API, ops) folded into coverage math.</li>
+            </ul>
+          </article>
+          <article class="howto-gloss">
+            <h3 data-i18n="howto.g.tiers.t">2 · Storage tiers</h3>
+            <ul>
+              <li data-i18n="howto.g.tiers.enable" data-i18n-mode="html"><strong>Enabled</strong> — tick only tiers that exist (hot-only, or +warm/cold, or +frozen).</li>
+              <li data-i18n="howto.g.tiers.cols" data-i18n-mode="html"><strong>Effect</strong> — Measurement GB columns and environment rate columns follow this list.</li>
+              <li data-i18n="howto.g.tiers.snap" data-i18n-mode="html"><strong>Snapshot allocation</strong> — which tier’s GB share pays the snapshot/backup bill (<em>Auto</em> = frozen→cold→warm→hot).</li>
+              <li data-i18n="howto.g.tiers.unused" data-i18n-mode="html"><strong>Unused tiers</strong> — leave disabled; rates and GB stay at 0 and do not affect the bill.</li>
+            </ul>
+          </article>
+          <article class="howto-gloss">
+            <h3 data-i18n="howto.g.env.t">3 · Environments (clusters)</h3>
+            <ul>
+              <li data-i18n="howto.g.env.code" data-i18n-mode="html"><strong>Code</strong> — short id used in Measurement (DEV, INT, PROD, MON…). Sample PRE/PRO/MON are examples only.</li>
+              <li data-i18n="howto.g.env.rates" data-i18n-mode="html"><strong>Tier rates</strong> — cost per hour for each enabled tier in that cluster.</li>
+              <li data-i18n="howto.g.env.plat" data-i18n-mode="html"><strong>Kibana / Integrations / Tiebreaker</strong> — Cloud platform components; set to 0 on-prem if not applicable.</li>
+              <li data-i18n="howto.g.env.snap" data-i18n-mode="html"><strong>Snapshots / month</strong> — closed-month snapshot (or backup) cost for that env.</li>
+              <li data-i18n="howto.g.env.sur" data-i18n-mode="html"><strong>Surcharge ✓</strong> — families in this env share the commit/budget uplift. Untick for dedicated clusters (e.g. monitoring).</li>
+            </ul>
+          </article>
+          <article class="howto-gloss">
+            <h3 data-i18n="howto.g.meas.t">4 · Measurement</h3>
+            <ul>
+              <li data-i18n="howto.g.meas.row" data-i18n-mode="html"><strong>One row = one family</strong> — index pattern or data stream you want to charge back.</li>
+              <li data-i18n="howto.g.meas.env" data-i18n-mode="html"><strong>Env</strong> — must match an Environments code (drives which rates apply).</li>
+              <li data-i18n="howto.g.meas.gb" data-i18n-mode="html"><strong>GB per tier</strong> — measured size; this is what drives the share (not events/s or KB/doc).</li>
+              <li data-i18n="howto.g.meas.csv" data-i18n-mode="html"><strong>CSV</strong> — import/export to replace the fictional sample with your inventory.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="howto.steps.title">Recommended flow</h2>
+        <div class="howto-grid">
+          <article class="howto-step"><span class="howto-n">1</span><div><strong data-i18n="howto.s1.t">Set deployment &amp; global figures</strong><p data-i18n="howto.s1.d">In Parameters: Cloud or on-prem, cost unit, hours/month, annual commit or budget, margin and other annual cost.</p></div></article>
+          <article class="howto-step"><span class="howto-n">2</span><div><strong data-i18n="howto.s2.t">Enable the tiers you actually use</strong><p data-i18n="howto.s2.d">Hot-only? Enable Hot only. ILM with warm/cold? Enable those. Searchable snapshots? Enable Frozen. Then choose how snapshots are allocated.</p></div></article>
+          <article class="howto-step"><span class="howto-n">3</span><div><strong data-i18n="howto.s3.t">Define environments &amp; rates</strong><p data-i18n="howto.s3.d">Add or rename cluster codes, fill yellow rate cells for enabled tiers, platform columns if Cloud, snapshots/month, and tick Surcharge where commit uplift applies.</p></div></article>
+          <article class="howto-step"><span class="howto-n">4</span><div><strong data-i18n="howto.s4.t">Fill Measurement</strong><p data-i18n="howto.s4.d">One yellow row per family: name, env, GB in each enabled tier. Events/s and KB/doc are optional context only.</p></div></article>
+          <article class="howto-step"><span class="howto-n">5</span><div><strong data-i18n="howto.s5.t">Read Allocations</strong><p data-i18n="howto.s5.d">Without admin cost = pure capacity + snapshots. With admin cost = same plus surcharge on marked environments.</p></div></article>
+          <article class="howto-step"><span class="howto-n">6</span><div><strong data-i18n="howto.s6.t">Workloads &amp; Any family</strong><p data-i18n="howto.s6.d">Group families for a business owner, or open Any family to walk the calculation step by step for audits.</p></div></article>
+        </div>
+      </div>
+
       <div class="grid-2">
         <div class="card">
           <h2 data-i18n="howto.tip.title">Tips</h2>
           <ul class="howto-tips">
-            <li data-i18n="howto.tip.1">Your edits are saved in the browser (localStorage). Export CSV before clearing cache.</li>
-            <li data-i18n="howto.tip.2">Events/s and KB/doc are context only — they do not drive the ECU share.</li>
-            <li data-i18n="howto.tip.3">Sample names and volumes are fictional. Never paste real customer inventories into a public fork.</li>
+            <li data-i18n="howto.tip.1">Edits are saved in the browser (localStorage). Export CSV before clearing cache.</li>
+            <li data-i18n="howto.tip.2">Events/s and KB/doc never enter the cost formula — only GB share × rates × hours (+ snapshots + optional surcharge).</li>
+            <li data-i18n="howto.tip.3">Sample names and volumes are fictional. Do not paste real customer inventories into a public fork.</li>
+            <li data-i18n="howto.tip.4">On-prem: set platform rates to 0 if unused, switch unit to EUR/USD, and treat “commit” as your annual budget or license target.</li>
+            <li data-i18n="howto.tip.5">Need a clean start? Measurement → Reset sample (also restores default tiers and environments).</li>
           </ul>
         </div>
         <div class="card card--formula">
           <h2 data-i18n="howto.formula.title">Allocation formula (simplified)</h2>
-          <pre class="formula" data-i18n="howto.formula.body">family_ECU/month ≈ (GB_hot_family / GB_hot_env) × ECU/h_hot × hours + (GB_frozen_family / GB_frozen_env) × (ECU/h_frozen × hours + snapshots/month) + optional surcharge if env is marked</pre>
+          <pre class="formula" data-i18n="howto.formula.body">family_cost/month ≈
+  Σ enabled tiers (GB_family / GB_env × rate/h × hours)
++ snapshot_share × snapshots/month
++ optional surcharge if env is marked</pre>
         </div>
       </div>
     </section>
@@ -93,38 +158,58 @@
     <section class="panel" id="panel-parameters">
       <div class="card">
         <h2 data-i18n="params.title">Parameters</h2>
-        <p class="lede" data-i18n="params.lede">Global contract figures. Environments below are fully configurable — add DEV, INT, UAT, PROD, MONITORING or any codes your org uses.</p>
+        <p class="lede" data-i18n="params.lede">Works for Elastic Cloud and on-prem. Configure deployment type, cost unit, environments and storage tiers.</p>
         <div class="grid-4">
+          <div class="field editable">
+            <label data-i18n="params.deployment">Deployment</label>
+            <select id="deployment-mode">
+              <option value="cloud" data-i18n="params.depCloud">Elastic Cloud</option>
+              <option value="onprem" data-i18n="params.depOnprem">On-premises</option>
+            </select>
+          </div>
+          <div class="field editable"><label data-i18n="params.unit">Cost unit</label><input data-param="unit" type="text" placeholder="ECU / EUR / USD"></div>
           <div class="field editable"><label data-i18n="params.hours">Hours / month</label><input data-param="hoursMonth" type="number" step="1"></div>
-          <div class="field editable"><label data-i18n="params.commit">Annual ECU commit</label><input data-param="annualCommit" type="number" step="1"></div>
+          <div class="field editable"><label data-i18n="params.commit">Annual commit / budget</label><input data-param="annualCommit" type="number" step="1"></div>
           <div class="field editable"><label data-i18n="params.margin">Margin on commit</label><input data-param="margin" type="number" step="0.01"></div>
-          <div class="field editable"><label data-i18n="params.other">Other ECU / year (egress + snapshot API)</label><input data-param="otherAnnual" type="number" step="1"></div>
+          <div class="field editable"><label data-i18n="params.other">Other annual cost</label><input data-param="otherAnnual" type="number" step="1"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="tier.title">Storage tiers</h2>
+        <p class="lede" data-i18n="tier.lede">Enable only the tiers you use: hot-only, hot+warm+cold, +frozen, etc. Rates and Measurement columns follow this list.</p>
+        <div class="toolbar">
+          <button class="btn btn--primary btn--sm" id="btn-add-tier" type="button" data-i18n="tier.add">+ Custom tier</button>
+          <div class="field" style="min-width:220px;margin:0">
+            <label data-i18n="tier.snapAlloc">Snapshot / backup cost allocated by</label>
+            <select id="snapshot-tier"></select>
+          </div>
+        </div>
+        <div class="table-wrap" style="max-height:none">
+          <table class="data data--envs">
+            <thead>
+              <tr>
+                <th data-i18n="tier.th.code">Code</th>
+                <th data-i18n="tier.th.label">Label</th>
+                <th data-i18n="tier.th.enabled">Enabled</th>
+              </tr>
+            </thead>
+            <tbody id="tiers-body"></tbody>
+          </table>
         </div>
       </div>
 
       <div class="card">
         <h2 data-i18n="env.title">Environments (clusters)</h2>
-        <p class="lede" data-i18n="env.lede">Each row is one billable environment / cluster. Tick “Surcharge” for workloads that share the annual commit uplift. Untick for dedicated clusters (e.g. monitoring) billed at their own rate.</p>
+        <p class="lede" data-i18n="env.lede">Each row is one billable environment / cluster. Tick “Surcharge” for workloads that share the annual commit/budget uplift.</p>
+        <p class="hint platform-cols-hint"></p>
         <div class="toolbar">
           <button class="btn btn--primary btn--sm" id="btn-add-env" type="button" data-i18n="env.add">+ Add environment</button>
           <button class="btn btn--secondary btn--sm" id="btn-export-envs" type="button" data-i18n="env.export">Export envs CSV</button>
         </div>
         <div class="table-wrap">
           <table class="data data--envs">
-            <thead>
-              <tr>
-                <th data-i18n="env.th.code">Code</th>
-                <th data-i18n="env.th.label">Label</th>
-                <th data-i18n="env.th.surcharge">Surcharge</th>
-                <th data-i18n="env.th.hot">Hot ECU/h</th>
-                <th data-i18n="env.th.frozen">Frozen ECU/h</th>
-                <th data-i18n="env.th.kibana">Kibana</th>
-                <th data-i18n="env.th.integrations">Integrations</th>
-                <th data-i18n="env.th.tiebreaker">Tiebreaker</th>
-                <th data-i18n="env.th.snapshots">Snapshots / mo</th>
-                <th></th>
-              </tr>
-            </thead>
+            <thead id="env-head"></thead>
             <tbody id="env-body"></tbody>
           </table>
         </div>
@@ -132,11 +217,11 @@
 
       <div class="grid-2">
         <div class="card">
-          <h2 data-i18n="params.finance.title">Commit coverage</h2>
+          <h2 data-i18n="params.finance.title">Commit / budget coverage</h2>
           <p class="lede" data-i18n="params.finance.lede">Surcharge = (annual target − dedicated env annual) / surchargeable base − 1.</p>
           <div class="grid-2">
             <div><span class="hint" data-i18n="params.out.surcharge">Computed surcharge</span><div style="font-size:1.6rem;font-weight:700;color:var(--dk-teal-dark)" id="out-surcharge">—</div></div>
-            <div><span class="hint" data-i18n="params.out.target">Annual target (commit × margin)</span><div style="font-size:1.2rem;font-weight:700" id="out-objetivo">—</div></div>
+            <div><span class="hint" data-i18n="params.out.target">Annual target</span><div style="font-size:1.2rem;font-weight:700" id="out-objetivo">—</div></div>
             <div><span class="hint" data-i18n="params.out.base">Surchargeable base / year</span><div id="out-base">—</div></div>
             <div><span class="hint" data-i18n="params.out.dedicated">Dedicated envs / year</span><div id="out-dedicated">—</div></div>
             <div><span class="hint" data-i18n="params.out.platform">Platform annual (surchargeable)</span><div id="out-platform">—</div></div>
@@ -171,22 +256,7 @@
         </div>
         <div class="table-wrap">
           <table class="data">
-            <thead>
-              <tr>
-                <th data-i18n="meas.th.family">Family</th>
-                <th data-i18n="meas.th.env">Env</th>
-                <th data-i18n="meas.th.what">What</th>
-                <th data-i18n="meas.th.eps15">Events/s 15m</th>
-                <th data-i18n="meas.th.kbdoc">KB/doc</th>
-                <th data-i18n="meas.th.docs">Docs</th>
-                <th data-i18n="meas.th.hot">GB hot</th>
-                <th data-i18n="meas.th.frz">GB frozen</th>
-                <th data-i18n="meas.th.idx">Indices</th>
-                <th data-i18n="meas.th.epsLife">Events/s life</th>
-                <th data-i18n="meas.th.age">Age days</th>
-                <th></th>
-              </tr>
-            </thead>
+            <thead id="meas-head"></thead>
             <tbody id="meas-body"></tbody>
           </table>
         </div>
@@ -219,11 +289,10 @@
           <p class="lede" data-i18n="wl.cloud.lede">Group several Measurement families into one chargeback story (cloud Kubernetes app logs).</p>
           <select id="cloud-add"></select>
           <div class="chips" id="cloud-chips"></div>
-          <div class="grid-2" style="margin-top:1rem">
-            <div><span class="hint" data-i18n="wl.gbhot">GB hot</span><div><strong id="cloud-gbhot">—</strong></div></div>
-            <div><span class="hint" data-i18n="wl.gbfrz">GB frozen</span><div><strong id="cloud-gbfrozen">—</strong></div></div>
-            <div><span class="hint" data-i18n="wl.ecumo">ECU / month</span><div class="money" id="cloud-ecumo">—</div></div>
-            <div><span class="hint" data-i18n="wl.ecuyr">ECU / year</span><div class="money" id="cloud-ecuyr">—</div></div>
+          <div class="grid-2" style="margin-top:1rem" id="cloud-gb"></div>
+          <div class="grid-2" style="margin-top:0.5rem">
+            <div><span class="hint" data-i18n="wl.ecumo">Cost / month</span><div class="money" id="cloud-ecumo">—</div></div>
+            <div><span class="hint" data-i18n="wl.ecuyr">Cost / year</span><div class="money" id="cloud-ecuyr">—</div></div>
           </div>
         </div>
         <div class="card">
@@ -231,11 +300,10 @@
           <p class="lede" data-i18n="wl.onprem.lede">Same pattern for on-prem Kubernetes application logs.</p>
           <select id="onprem-add"></select>
           <div class="chips" id="onprem-chips"></div>
-          <div class="grid-2" style="margin-top:1rem">
-            <div><span class="hint" data-i18n="wl.gbhot">GB hot</span><div><strong id="onprem-gbhot">—</strong></div></div>
-            <div><span class="hint" data-i18n="wl.gbfrz">GB frozen</span><div><strong id="onprem-gbfrozen">—</strong></div></div>
-            <div><span class="hint" data-i18n="wl.ecumo">ECU / month</span><div class="money" id="onprem-ecumo">—</div></div>
-            <div><span class="hint" data-i18n="wl.ecuyr">ECU / year</span><div class="money" id="onprem-ecuyr">—</div></div>
+          <div class="grid-2" style="margin-top:1rem" id="onprem-gb"></div>
+          <div class="grid-2" style="margin-top:0.5rem">
+            <div><span class="hint" data-i18n="wl.ecumo">Cost / month</span><div class="money" id="onprem-ecumo">—</div></div>
+            <div><span class="hint" data-i18n="wl.ecuyr">Cost / year</span><div class="money" id="onprem-ecuyr">—</div></div>
           </div>
         </div>
       </div>

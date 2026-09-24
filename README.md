@@ -1,8 +1,8 @@
-# Elastic Cloud Cost Allocator
+# Elastic Cost Allocator
 
-**Allocate Elastic Cloud (ECU) spend across index families and data streams** using measured hot/frozen storage share — with optional platform/admin surcharge and annual commit coverage.
+**Allocate Elastic spend across index families and data streams** using measured storage share — for **Elastic Cloud or on-premises**, with **configurable storage tiers** (hot / warm / cold / frozen, or hot-only), optional platform/admin surcharge, and annual commit or budget coverage.
 
-> Spreadsheet **and** web UI for SRE, FinOps, and observability teams who need a transparent, auditable way to charge back Elastic Cloud cost to workloads.
+> Spreadsheet **and** web UI for SRE, FinOps, and observability teams who need a transparent, auditable way to charge back Elastic cost to workloads.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Excel](https://img.shields.io/badge/format-Excel%20.xlsx-green.svg)
@@ -22,16 +22,16 @@ cd web && python -m http.server 8765
 
 ## Why this exists
 
-Elastic Cloud invoices are easy to read at the **cluster** level (hot nodes, frozen tier, Kibana, snapshots, monitoring…) and hard to explain at the **workload** level:
+Elastic invoices (Cloud ECU or on-prem license / ops cost) are easy to read at the **cluster** level and hard to explain at the **workload** level:
 
 - Which application / data stream drives most of the bill?
-- How do you share platform cost (Kibana, Integrations Server, tiebreaker) fairly?
-- How do you cover an annual ECU commit when measured usage alone does not reach it?
-- How do you show the same result **with** and **without** an admin/ops surcharge?
+- Do you run **hot-only**, or **hot + warm + cold**, or **+ frozen** searchable snapshots?
+- How do you share platform cost (Kibana, Integrations Server, tiebreaker) fairly on Cloud — or leave them at zero on-prem?
+- How do you cover an annual commit / budget when measured usage alone does not reach it?
 
-This workbook turns **measured GB on hot and frozen** into a **cost share per index family**, so you can charge back, prioritize retention changes, or justify sizing.
+This template turns **measured GB per enabled tier** into a **cost share per index family**, so you can charge back, prioritize retention changes, or justify sizing.
 
-It does **not** call Elastic Cloud APIs and does **not** change your cluster. You paste (or export) measurements; formulas do the rest.
+It does **not** call Elastic APIs and does **not** change your cluster. You paste (or export) measurements; formulas do the rest.
 
 ---
 
@@ -39,33 +39,33 @@ It does **not** call Elastic Cloud APIs and does **not** change your cluster. Yo
 
 | Sheet / UI | Purpose |
 |---|---|
-| **Environments** | **Configurable** list of clusters/envs (any codes: DEV, INT, UAT, PROD, MONITORING, …). Per-env rates + “Apply surcharge” flag. |
-| **Global** | Hours/month, annual ECU commit, margin, other annual ECU. Computes commit uplift. |
-| **Measurement** | One row per index family: **env code** (must match Environments), GB hot/frozen, optional events/s & KB/doc. |
-| **Without Admin Cost** | Per-family ECU/month using measured share only. |
-| **With Admin Cost** | Same + surcharge on environments marked for commit uplift. |
+| **Tiers** | Enable only the storage tiers you use (hot-only, +warm/cold, +frozen, custom). |
+| **Environments** | Configurable clusters/envs (any codes). Per-env rates per tier + “Apply surcharge” flag. |
+| **Global** | Deployment (`cloud` \| `onprem`), cost unit (ECU/EUR/USD…), hours, annual commit/budget, margin, snapshot alloc preference. |
+| **Measurement** | One row per index family: env code + GB per tier (+ optional events/s & KB/doc). |
+| **Without Admin Cost** | Per-family cost/month using measured share only. |
+| **With Admin Cost** | Same + surcharge on environments marked for commit/budget uplift. |
 | **Any Family** | Step-by-step calculation for one family (VLOOKUP rates by env). |
-| **Web UI** (`web/`) | Same model: add/rename/remove environments, ES/EN, CSV import/export. |
+| **Web UI** (`web/`) | Same model: toggle Cloud/on-prem, enable tiers, add/rename envs, ES/EN, CSV import/export. |
 
-Sample workbook ships with example codes `PRE` / `PRO` / `MON` — they are **not required**. Rename or replace them for your client topology.
-
+Sample workbook ships with example codes `PRE` / `PRO` / `MON` and **hot + frozen** enabled (warm/cold off) — not required. Change topology to match your client.
 
 ---
 
 ## How the allocation works
 
-1. **Define environments** (any number): code, ECU/h rates, snapshots/month, and whether commit **surcharge** applies.
-2. **Measure** primary dataset size per family (GB hot, GB frozen) tagged with an env code.
-3. **Share** within that environment:  
-   - Hot → proportional to **GB hot** in the same env  
-   - Frozen + snapshots → proportional to **GB frozen** (falls back to hot share if frozen is zero)
-4. **Rate** → env rates × hours/month from Global / Parameters.
-5. **Surcharge (optional)** → environments with *Apply surcharge = TRUE* form the commit base; dedicated envs (e.g. monitoring) are billed at their own rate and deducted from the annual target when computing uplift.
+1. **Enable tiers** that exist in your cluster(s).
+2. **Define environments** (any number): code, rates per enabled tier, snapshots/month, surcharge flag.
+3. **Measure** primary dataset size per family (GB per tier) tagged with an env code.
+4. **Share** within that environment, per tier:  
+   `GB_tier_family / GB_tier_env × rate_tier × hours`
+5. **Snapshots / backup** → allocated by preferred tier (`auto` = frozen→cold→warm→hot with data, else first enabled).
+6. **Surcharge (optional)** → envs with *Apply surcharge = TRUE* form the commit/budget base; dedicated envs are billed at their own rate and deducted from the annual target.
 
 ```text
-family_ECU/month ≈
-    (GB_hot_family / GB_hot_env) × ECU/h_hot × hours
-  + (GB_frozen_family / GB_frozen_env) × (ECU/h_frozen × hours + snapshots/month)
+family_cost/month ≈
+    Σ_enabled_tiers (GB_tier_family / GB_tier_env) × rate_tier × hours
+  + snap_share × snapshots/month
   + optional surcharge if the environment is marked
 ```
 
@@ -74,14 +74,14 @@ family_ECU/month ≈
 ## Quick start
 
 1. Open [`elastic-cloud-cost-allocator.xlsx`](./elastic-cloud-cost-allocator.xlsx) in Excel, LibreOffice Calc, or Google Sheets (upload).
-2. Go to **Parameters** and replace the sample ECU/h rates, snapshot costs and annual commit with **your** contract / console figures.
-3. Go to **Measurement** and replace every sample family with **your** index patterns and measured GB (and optional events/s, KB/doc).
-4. Read **Without Admin Cost** / **With Admin Cost** for the full ledger, or use **Any Family** / the sample workload sheets for a single chargeback story.
-5. Duplicate a workload sheet (like Sample Cloud Apps) for each real business owner: put their exact Measurement family names in the yellow cells.
+2. Adjust **Tiers** (enable only what you use) and **Global** (deployment, unit, commit/budget).
+3. Edit **Environments** rates; set platform columns to 0 for typical on-prem if unused.
+4. Replace **Measurement** sample families with your inventory and GB per tier.
+5. Read **Without Admin Cost** / **With Admin Cost**, or use the web UI for the same model.
 
 ### Suggested measurement sources
 
-- Elasticsearch `_cat/indices` / ILM / data stream stats for primary store size  
+- Elasticsearch `_cat/indices` / ILM / data stream stats for primary store size by tier  
 - Frozen / searchable snapshots dataset size from the same inventory  
 - Optional: docs in `now-15m` for events/s, primary bytes / docs for KB/doc  
 
@@ -95,7 +95,7 @@ This repository ships with **fictional** family names and **synthetic** volumetr
 
 - No real customer names  
 - No real index inventories  
-- No real ECU commits or invoice lines  
+- No real commits, invoices, or license lines  
 
 Use the workbook as a **template**. Swap in your own numbers before any internal or customer-facing report.
 
@@ -109,7 +109,7 @@ elastic-cloud-cost-allocator/
 ├── LICENSE
 ├── CONTRIBUTING.md
 ├── .gitignore
-├── elastic-cloud-cost-allocator.xlsx   # Environments + Global + Measurement + Allocations
+├── elastic-cloud-cost-allocator.xlsx   # Tiers + Environments + Global + Measurement + Allocations
 ├── scripts/rebuild_excel_envs.py      # regenerate Excel template
 └── web/
     ├── index.html
@@ -120,11 +120,17 @@ elastic-cloud-cost-allocator/
     └── logo-color.png
 ```
 
+Regenerate the Excel file after seed changes:
+
+```bash
+python scripts/rebuild_excel_envs.py
+```
+
 ---
 
 ## Contributing
 
-Improvements welcome: clearer English/Spanish labels, export scripts (ES|QL / `_cat` → CSV → Measurement), Google Sheets port, Python/Streamlit UI, multi-cluster support, ILM-aware retention what-if.
+Improvements welcome: clearer English/Spanish labels, export scripts (ES|QL / `_cat` → CSV → Measurement), Google Sheets port, Python/Streamlit UI, ILM-aware retention what-if.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -134,7 +140,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 - Do **not** commit real customer names, tenant URLs, tokens, or production index inventories.
 - Prefer synthetic demos in PRs; keep real workbooks private.
-- This tool is for **cost modelling / chargeback**. It does not modify Elastic Cloud.
+- This tool is for **cost modelling / chargeback**. It does not modify Elastic Cloud or on-prem clusters.
 
 ---
 

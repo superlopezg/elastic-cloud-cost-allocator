@@ -1,49 +1,54 @@
 (() => {
-  const STORAGE_KEY = "dk-elastic-cost-allocator-v2";
+  const STORAGE_KEY = "dk-elastic-cost-allocator-v3";
   const LANG_KEY = "dk-elastic-cost-allocator-lang";
 
-  /** Sample defaults — rename / add / remove for any client topology. */
+  /** Storage tiers — enable only what the cluster uses (hot-only, hot+warm+cold, +frozen, …). */
+  const DEFAULT_TIERS = [
+    { code: "hot", label: "Hot", enabled: true },
+    { code: "warm", label: "Warm", enabled: false },
+    { code: "cold", label: "Cold", enabled: false },
+    { code: "frozen", label: "Frozen", enabled: true },
+  ];
+
+  const EMPTY_RATES = () => ({ hot: 0, warm: 0, cold: 0, frozen: 0 });
+  const EMPTY_GB = () => ({ hot: 0, warm: 0, cold: 0, frozen: 0 });
+  const EMPTY_PLATFORM = () => ({ kibana: 0, integrations: 0, tiebreaker: 0 });
+
   const DEFAULT_ENVIRONMENTS = [
     {
       code: "PRE",
       label: "Pre-production",
       applySurcharge: true,
-      hot: 3.5,
-      frozen: 0.35,
-      kibana: 0.28,
-      integrations: 0.14,
-      tiebreaker: 0,
+      rates: { hot: 3.5, warm: 0, cold: 0, frozen: 0.35 },
+      platform: { kibana: 0.28, integrations: 0.14, tiebreaker: 0 },
       snapshots: 200,
     },
     {
       code: "PRO",
       label: "Production",
       applySurcharge: true,
-      hot: 5.0,
-      frozen: 1.0,
-      kibana: 0.56,
-      integrations: 0.14,
-      tiebreaker: 0.07,
+      rates: { hot: 5.0, warm: 0, cold: 0, frozen: 1.0 },
+      platform: { kibana: 0.56, integrations: 0.14, tiebreaker: 0.07 },
       snapshots: 500,
     },
     {
       code: "MON",
       label: "Monitoring (dedicated)",
       applySurcharge: false,
-      hot: 0.5,
-      frozen: 0,
-      kibana: 0,
-      integrations: 0,
-      tiebreaker: 0,
+      rates: { hot: 0.5, warm: 0, cold: 0, frozen: 0 },
+      platform: EMPTY_PLATFORM(),
       snapshots: 10,
     },
   ];
 
   const DEFAULT_PARAMS = {
+    deployment: "cloud", // cloud | onprem
+    unit: "ECU", // ECU, EUR, USD, …
     hoursMonth: 730,
     annualCommit: 100000,
     margin: 0.03,
     otherAnnual: 500,
+    snapshotAllocTier: "auto", // auto | hot | warm | cold | frozen
     surchargeOverride: null,
   };
 
@@ -66,6 +71,7 @@
 
   const state = {
     params: structuredClone(DEFAULT_PARAMS),
+    tiers: structuredClone(DEFAULT_TIERS),
     environments: structuredClone(DEFAULT_ENVIRONMENTS),
     rows: [],
     cloudFamilies: [...SAMPLE_CLOUD],
@@ -78,6 +84,18 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const t = (...args) => window.t(...args);
+
+  function unit() {
+    return state.params.unit || "ECU";
+  }
+
+  function enabledTiers() {
+    return state.tiers.filter((x) => x.enabled);
+  }
+
+  function tierCodes() {
+    return state.tiers.map((x) => x.code);
+  }
 
   function detectLang() {
     const saved = localStorage.getItem(LANG_KEY);
@@ -116,6 +134,13 @@
     return (n * 100).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "%";
   }
 
+  function escapeAttr(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;");
+  }
+
   function envCodes() {
     return state.environments.map((e) => e.code).filter(Boolean);
   }
@@ -124,37 +149,70 @@
     return state.environments.find((e) => e.code === code);
   }
 
+  function normalizeEnv(env) {
+    const rates = { ...EMPTY_RATES(), ...(env.rates || {}) };
+    if (env.hot != null && env.rates == null) rates.hot = Number(env.hot) || 0;
+    if (env.frozen != null && env.rates == null) rates.frozen = Number(env.frozen) || 0;
+    const platform = { ...EMPTY_PLATFORM(), ...(env.platform || {}) };
+    if (env.kibana != null && env.platform == null) platform.kibana = Number(env.kibana) || 0;
+    if (env.integrations != null && env.platform == null) platform.integrations = Number(env.integrations) || 0;
+    if (env.tiebreaker != null && env.platform == null) platform.tiebreaker = Number(env.tiebreaker) || 0;
+    return {
+      code: env.code,
+      label: env.label || "",
+      applySurcharge: !!env.applySurcharge,
+      rates,
+      platform,
+      snapshots: Number(env.snapshots) || 0,
+    };
+  }
+
+  function normalizeRow(r) {
+    const gb = { ...EMPTY_GB(), ...(r.gb || {}) };
+    if (r.gbHot != null && r.gb == null) gb.hot = Number(r.gbHot) || 0;
+    if (r.gbFrozen != null && r.gb == null) gb.frozen = Number(r.gbFrozen) || 0;
+    return {
+      family: r.family || "",
+      env: r.env || "",
+      what: r.what || "",
+      eps15: Number(r.eps15) || 0,
+      kbdoc: Number(r.kbdoc) || 0,
+      docs: Number(r.docs) || 0,
+      indices: Number(r.indices) || 0,
+      epsLife: Number(r.epsLife) || 0,
+      ageDays: Number(r.ageDays) || 0,
+      gb,
+    };
+  }
+
   function platformRate(envObj) {
     if (!envObj) return 0;
-    return (Number(envObj.kibana) || 0) + (Number(envObj.integrations) || 0) + (Number(envObj.tiebreaker) || 0);
+    const p = envObj.platform || EMPTY_PLATFORM();
+    return (Number(p.kibana) || 0) + (Number(p.integrations) || 0) + (Number(p.tiebreaker) || 0);
+  }
+
+  function tierRatesSum(envObj) {
+    let s = 0;
+    for (const tier of enabledTiers()) {
+      s += Number(envObj.rates?.[tier.code]) || 0;
+    }
+    return s;
   }
 
   function envAnnualBase(envObj, hoursYear) {
-    return (
-      (Number(envObj.hot) || 0) * hoursYear +
-      (Number(envObj.frozen) || 0) * hoursYear +
-      (Number(envObj.snapshots) || 0) * 12
-    );
+    return tierRatesSum(envObj) * hoursYear + (Number(envObj.snapshots) || 0) * 12;
   }
 
-  /** Commit uplift: only environments with applySurcharge feed the base; others are dedicated (billed at own rate, deducted from target). */
   function computeSurcharge() {
     const p = state.params;
-    if (p.surchargeOverride != null && p.surchargeOverride !== "") {
-      return Number(p.surchargeOverride);
-    }
+    if (p.surchargeOverride != null && p.surchargeOverride !== "") return Number(p.surchargeOverride);
     const hy = p.hoursMonth * 12;
     let base = 0;
     let dedicatedAnnual = 0;
-    let platformAnnual = 0;
     for (const env of state.environments) {
       const annual = envAnnualBase(env, hy);
-      if (env.applySurcharge) {
-        base += annual;
-        platformAnnual += platformRate(env) * hy;
-      } else {
-        dedicatedAnnual += annual;
-      }
+      if (env.applySurcharge) base += annual;
+      else dedicatedAnnual += annual;
     }
     const objetivo = p.annualCommit * (1 + p.margin);
     if (base <= 0) return 0;
@@ -172,43 +230,72 @@
       if (env.applySurcharge) {
         base += annual;
         platformAnnual += platformRate(env) * hy;
-      } else {
-        dedicatedAnnual += annual;
-      }
+      } else dedicatedAnnual += annual;
     }
     const objetivo = p.annualCommit * (1 + p.margin);
-    const surcharge = computeSurcharge();
-    const consumo = base + platformAnnual + dedicatedAnnual + p.otherAnnual;
-    return { hy, base, dedicatedAnnual, platformAnnual, objetivo, surcharge, consumo };
+    return {
+      hy,
+      base,
+      dedicatedAnnual,
+      platformAnnual,
+      objetivo,
+      surcharge: computeSurcharge(),
+      consumo: base + platformAnnual + dedicatedAnnual + p.otherAnnual,
+    };
   }
 
   function clusterTotals(rows = state.rows) {
     const out = {};
-    for (const code of envCodes()) out[code] = { hot: 0, frozen: 0 };
+    for (const code of envCodes()) {
+      out[code] = EMPTY_GB();
+    }
     for (const r of rows) {
-      const e = r.env;
-      if (!out[e]) out[e] = { hot: 0, frozen: 0 };
-      out[e].hot += Number(r.gbHot) || 0;
-      out[e].frozen += Number(r.gbFrozen) || 0;
+      if (!out[r.env]) out[r.env] = EMPTY_GB();
+      for (const tier of tierCodes()) {
+        out[r.env][tier] += Number(r.gb?.[tier]) || 0;
+      }
     }
     return out;
+  }
+
+  /** Which tier share drives snapshot allocation. */
+  function resolveSnapshotTier(envCode, totals) {
+    const pref = state.params.snapshotAllocTier || "auto";
+    const tot = totals[envCode] || EMPTY_GB();
+    if (pref !== "auto") {
+      const tdef = state.tiers.find((x) => x.code === pref && x.enabled);
+      if (tdef) return pref;
+    }
+    for (const code of ["frozen", "cold", "warm", "hot"]) {
+      const tdef = state.tiers.find((x) => x.code === code && x.enabled);
+      if (tdef && (tot[code] || 0) > 0) return code;
+    }
+    const first = enabledTiers()[0];
+    return first ? first.code : "hot";
   }
 
   function allocateRow(row, withAdmin, totals, surcharge) {
     const env = row.env;
     const envObj = findEnv(env);
-    const gbHot = Number(row.gbHot) || 0;
-    const gbFrozen = Number(row.gbFrozen) || 0;
-    const denHot = totals[env]?.hot || 0;
-    const denFrozen = totals[env]?.frozen || 0;
-    const shareHot = denHot > 0 ? gbHot / denHot : 0;
-    const shareFrozen = denFrozen > 0 ? gbFrozen / denFrozen : 0;
-    const ecuHHot = envObj ? Number(envObj.hot) || 0 : 0;
-    const ecuHFrozen = envObj ? Number(envObj.frozen) || 0 : 0;
-    const snaps = envObj ? Number(envObj.snapshots) || 0 : 0;
+    const tot = totals[env] || EMPTY_GB();
     const hours = state.params.hoursMonth;
-    const ecuMesCap = (shareHot * ecuHHot + shareFrozen * ecuHFrozen) * hours;
-    const snapShare = denFrozen > 0 ? shareFrozen : shareHot;
+    const shares = {};
+    let ecuMesCap = 0;
+    const tierCosts = {};
+    for (const tier of enabledTiers()) {
+      const code = tier.code;
+      const gb = Number(row.gb?.[code]) || 0;
+      const den = tot[code] || 0;
+      const share = den > 0 ? gb / den : 0;
+      shares[code] = share;
+      const rate = envObj ? Number(envObj.rates?.[code]) || 0 : 0;
+      const cost = share * rate * hours;
+      tierCosts[code] = cost;
+      ecuMesCap += cost;
+    }
+    const snapTier = resolveSnapshotTier(env, totals);
+    const snapShare = shares[snapTier] ?? 0;
+    const snaps = envObj ? Number(envObj.snapshots) || 0 : 0;
     const ecuMesSnap = snapShare * snaps;
     const ecuMesElastic = ecuMesCap + ecuMesSnap;
     const applySur = withAdmin && !!(envObj && envObj.applySurcharge);
@@ -216,10 +303,10 @@
     const ecuMes = ecuMesElastic + ecuMesRecargo;
     return {
       ...row,
-      shareHot,
-      shareFrozen,
-      ecuHHot,
-      ecuHFrozen,
+      shares,
+      tierCosts,
+      snapTier,
+      snapShare,
       ecuMesCap,
       ecuMesSnap,
       ecuMesElastic,
@@ -239,46 +326,68 @@
   function sumFamilies(names, withAdmin = true) {
     const set = new Set(names.filter(Boolean));
     const rows = allocations(withAdmin).filter((r) => set.has(r.family));
+    const gb = EMPTY_GB();
+    for (const r of rows) {
+      for (const c of tierCodes()) gb[c] += Number(r.gb?.[c]) || 0;
+    }
     return {
       rows,
-      gbHot: rows.reduce((a, r) => a + (Number(r.gbHot) || 0), 0),
-      gbFrozen: rows.reduce((a, r) => a + (Number(r.gbFrozen) || 0), 0),
+      gb,
       ecuMes: rows.reduce((a, r) => a + r.ecuMes, 0),
       ecuYear: rows.reduce((a, r) => a + r.ecuYear, 0),
     };
   }
 
-  function migrateLegacyParams(data) {
-    if (data.environments?.length) {
-      return {
-        params: { ...DEFAULT_PARAMS, ...data.params },
-        environments: data.environments,
-      };
+  function migrate(data) {
+    let params = { ...DEFAULT_PARAMS, ...(data.params || {}) };
+    // v1 fixed maps
+    if (data.params?.hot && !data.environments) {
+      /* handled below via environments migration */
     }
-    // v1: fixed PRE/PRO/MON maps → environments[]
-    const p = data.params || {};
-    const environments = structuredClone(DEFAULT_ENVIRONMENTS).map((env) => {
-      const code = env.code;
-      return {
-        ...env,
-        hot: p.hot?.[code] ?? env.hot,
-        frozen: p.frozen?.[code] ?? env.frozen,
-        kibana: p.kibana?.[code] ?? env.kibana,
-        integrations: p.integrations?.[code] ?? env.integrations,
-        tiebreaker: p.tiebreaker?.[code] ?? env.tiebreaker,
-        snapshots: p.snapshots?.[code] ?? env.snapshots,
-      };
-    });
-    return {
-      params: {
+    let tiers = data.tiers?.length ? data.tiers.map((x) => ({ ...x })) : structuredClone(DEFAULT_TIERS);
+    let environments;
+    if (data.environments?.length) {
+      environments = data.environments.map(normalizeEnv);
+    } else if (data.params?.hot) {
+      const p = data.params;
+      environments = structuredClone(DEFAULT_ENVIRONMENTS).map((env) => {
+        const code = env.code;
+        return normalizeEnv({
+          ...env,
+          rates: {
+            hot: p.hot?.[code] ?? env.rates.hot,
+            warm: 0,
+            cold: 0,
+            frozen: p.frozen?.[code] ?? env.rates.frozen,
+          },
+          platform: {
+            kibana: p.kibana?.[code] ?? env.platform.kibana,
+            integrations: p.integrations?.[code] ?? env.platform.integrations,
+            tiebreaker: p.tiebreaker?.[code] ?? env.platform.tiebreaker,
+          },
+          snapshots: p.snapshots?.[code] ?? env.snapshots,
+        });
+      });
+      params = {
+        ...DEFAULT_PARAMS,
         hoursMonth: p.hoursMonth ?? DEFAULT_PARAMS.hoursMonth,
         annualCommit: p.annualCommit ?? DEFAULT_PARAMS.annualCommit,
         margin: p.margin ?? DEFAULT_PARAMS.margin,
         otherAnnual: p.otherAnnual ?? DEFAULT_PARAMS.otherAnnual,
-        surchargeOverride: p.surchargeOverride ?? null,
-      },
-      environments,
-    };
+      };
+    } else {
+      environments = structuredClone(DEFAULT_ENVIRONMENTS);
+    }
+
+    // Ensure rates keys for all tier codes
+    for (const env of environments) {
+      for (const code of tierCodes()) {
+        if (env.rates[code] == null) env.rates[code] = 0;
+      }
+    }
+
+    const rows = (data.rows?.length ? data.rows : window.DK_SEED_MEASUREMENT || []).map(normalizeRow);
+    return { params, tiers, environments, rows };
   }
 
   function save() {
@@ -286,6 +395,7 @@
       STORAGE_KEY,
       JSON.stringify({
         params: state.params,
+        tiers: state.tiers,
         environments: state.environments,
         rows: state.rows,
         cloudFamilies: state.cloudFamilies,
@@ -297,25 +407,31 @@
 
   function load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("dk-elastic-cost-allocator-v1");
+      const raw =
+        localStorage.getItem(STORAGE_KEY) ||
+        localStorage.getItem("dk-elastic-cost-allocator-v2") ||
+        localStorage.getItem("dk-elastic-cost-allocator-v1");
       if (!raw) {
-        state.environments = structuredClone(DEFAULT_ENVIRONMENTS);
         state.params = structuredClone(DEFAULT_PARAMS);
-        state.rows = structuredClone(window.DK_SEED_MEASUREMENT || []);
+        state.tiers = structuredClone(DEFAULT_TIERS);
+        state.environments = structuredClone(DEFAULT_ENVIRONMENTS);
+        state.rows = (window.DK_SEED_MEASUREMENT || []).map(normalizeRow);
         return;
       }
       const data = JSON.parse(raw);
-      const migrated = migrateLegacyParams(data);
-      state.params = migrated.params;
-      state.environments = migrated.environments;
-      state.rows = data.rows?.length ? data.rows : structuredClone(window.DK_SEED_MEASUREMENT || []);
+      const m = migrate(data);
+      state.params = m.params;
+      state.tiers = m.tiers;
+      state.environments = m.environments;
+      state.rows = m.rows;
       state.cloudFamilies = data.cloudFamilies || [...SAMPLE_CLOUD];
       state.onpremFamilies = data.onpremFamilies || [...SAMPLE_ONPREM];
       state.anyFamily = data.anyFamily || state.anyFamily;
     } catch {
-      state.environments = structuredClone(DEFAULT_ENVIRONMENTS);
       state.params = structuredClone(DEFAULT_PARAMS);
-      state.rows = structuredClone(window.DK_SEED_MEASUREMENT || []);
+      state.tiers = structuredClone(DEFAULT_TIERS);
+      state.environments = structuredClone(DEFAULT_ENVIRONMENTS);
+      state.rows = (window.DK_SEED_MEASUREMENT || []).map(normalizeRow);
     }
   }
 
@@ -333,31 +449,73 @@
   function renderKPIs() {
     const withA = allocations(true);
     const totals = clusterTotals();
-    const surcharge = computeSurcharge();
     const ecuMes = withA.reduce((a, r) => a + r.ecuMes, 0);
-    const hotSum = Object.values(totals).reduce((a, t) => a + t.hot, 0);
+    let hotSum = 0;
+    for (const env of Object.values(totals)) {
+      for (const tier of enabledTiers()) hotSum += env[tier.code] || 0;
+    }
     $("#kpi-ecu-month").textContent = money(ecuMes);
     $("#kpi-ecu-year").textContent = money(ecuMes * 12);
-    $("#kpi-surcharge").textContent = pct(surcharge);
+    $("#kpi-surcharge").textContent = pct(computeSurcharge());
     $("#kpi-hot").textContent = `${num(hotSum, 1)} GB`;
     $("#kpi-families").textContent = t("dyn.families", { n: state.rows.length });
     const surEnvs = state.environments.filter((e) => e.applySurcharge).map((e) => e.code).join(" + ") || "—";
     const sub = $("#kpi-surcharge-sub");
     if (sub) sub.textContent = t("kpi.surcharge.sub", { envs: surEnvs });
+    const u = unit();
+    $$("[data-unit]").forEach((el) => {
+      el.textContent = u;
+    });
+    document.body.dataset.deployment = state.params.deployment;
+  }
+
+  function renderTiers() {
+    const box = $("#tiers-body");
+    box.innerHTML = state.tiers
+      .map(
+        (tier, i) => `<tr data-ti="${i}">
+          <td><input data-tf="code" value="${escapeAttr(tier.code)}" ${["hot", "warm", "cold", "frozen"].includes(tier.code) ? "readonly" : ""}></td>
+          <td><input data-tf="label" value="${escapeAttr(tier.label)}"></td>
+          <td style="text-align:center"><input data-tf="enabled" type="checkbox" ${tier.enabled ? "checked" : ""}></td>
+        </tr>`
+      )
+      .join("");
+
+    const snapSel = $("#snapshot-tier");
+    const cur = state.params.snapshotAllocTier;
+    snapSel.innerHTML =
+      `<option value="auto">${t("tier.snapAuto")}</option>` +
+      enabledTiers()
+        .map((x) => `<option value="${x.code}" ${cur === x.code ? "selected" : ""}>${escapeAttr(x.label)}</option>`)
+        .join("");
+    if (cur !== "auto" && !enabledTiers().some((x) => x.code === cur)) {
+      state.params.snapshotAllocTier = "auto";
+      snapSel.value = "auto";
+    } else snapSel.value = cur;
   }
 
   function renderParams() {
     const p = state.params;
-    const map = {
-      hoursMonth: p.hoursMonth,
-      annualCommit: p.annualCommit,
-      margin: p.margin,
-      otherAnnual: p.otherAnnual,
-    };
-    Object.entries(map).forEach(([k, v]) => {
+    const dep = $("#deployment-mode");
+    if (dep && document.activeElement !== dep) dep.value = p.deployment;
+    const unitEl = $("[data-param='unit']");
+    if (unitEl && document.activeElement !== unitEl) unitEl.value = p.unit;
+    ["hoursMonth", "annualCommit", "margin", "otherAnnual"].forEach((k) => {
       const el = document.querySelector(`[data-param="${k}"]`);
-      if (el && document.activeElement !== el) el.value = v;
+      if (el && document.activeElement !== el) el.value = p[k];
     });
+
+    // rename commit labels for onprem via small hints
+    const commitLab = $("[data-i18n='params.commit']");
+    if (commitLab) {
+      commitLab.textContent = t(p.deployment === "onprem" ? "params.commitOnprem" : "params.commit", { unit: unit() });
+    }
+    const otherLab = $("[data-i18n='params.other']");
+    if (otherLab) {
+      otherLab.textContent = t(p.deployment === "onprem" ? "params.otherOnprem" : "params.other", { unit: unit() });
+    }
+
+    renderTiers();
 
     const fin = financeSummary();
     $("#out-surcharge").textContent = pct(fin.surcharge);
@@ -367,21 +525,39 @@
     $("#out-dedicated").textContent = money(fin.dedicatedAnnual);
     $("#out-base").textContent = money(fin.base);
 
+    const thead = $("#env-head");
+    const tierHeads = enabledTiers()
+      .map((x) => `<th>${escapeAttr(x.label)} ${unit()}/h</th>`)
+      .join("");
+    thead.innerHTML = `<tr>
+      <th>${t("env.th.code")}</th>
+      <th>${t("env.th.label")}</th>
+      <th>${t("env.th.surcharge")}</th>
+      ${tierHeads}
+      <th>${t("env.th.kibana")}</th>
+      <th>${t("env.th.integrations")}</th>
+      <th>${t("env.th.tiebreaker")}</th>
+      <th>${t("env.th.snapshots")}</th>
+      <th></th>
+    </tr>`;
+
     const tbody = $("#env-body");
     tbody.innerHTML = state.environments
       .map((env, i) => {
-        const focused = document.activeElement;
-        const skipFocus = focused && focused.closest?.(`#env-body tr[data-ei="${i}"]`);
-        void skipFocus;
+        const rateCells = enabledTiers()
+          .map(
+            (tier) =>
+              `<td><input data-ef-rate="${tier.code}" type="number" step="any" value="${env.rates[tier.code] ?? 0}"></td>`
+          )
+          .join("");
         return `<tr data-ei="${i}">
           <td><input data-ef="code" value="${escapeAttr(env.code)}"></td>
           <td><input data-ef="label" value="${escapeAttr(env.label || "")}"></td>
-          <td style="text-align:center"><input data-ef="applySurcharge" type="checkbox" ${env.applySurcharge ? "checked" : ""} title="${escapeAttr(t("env.applyHint"))}"></td>
-          <td><input data-ef="hot" type="number" step="any" value="${env.hot}"></td>
-          <td><input data-ef="frozen" type="number" step="any" value="${env.frozen}"></td>
-          <td><input data-ef="kibana" type="number" step="any" value="${env.kibana}"></td>
-          <td><input data-ef="integrations" type="number" step="any" value="${env.integrations}"></td>
-          <td><input data-ef="tiebreaker" type="number" step="any" value="${env.tiebreaker}"></td>
+          <td style="text-align:center"><input data-ef="applySurcharge" type="checkbox" ${env.applySurcharge ? "checked" : ""}></td>
+          ${rateCells}
+          <td><input data-ef-plat="kibana" type="number" step="any" value="${env.platform.kibana}"></td>
+          <td><input data-ef-plat="integrations" type="number" step="any" value="${env.platform.integrations}"></td>
+          <td><input data-ef-plat="tiebreaker" type="number" step="any" value="${env.platform.tiebreaker}"></td>
           <td><input data-ef="snapshots" type="number" step="any" value="${env.snapshots}"></td>
           <td><button class="btn btn--danger btn--sm" data-env-del="${i}" type="button">✕</button></td>
         </tr>`;
@@ -389,19 +565,25 @@
       .join("");
 
     const totals = clusterTotals();
-    const usage = $("#env-usage");
-    usage.innerHTML = state.environments
+    $("#env-usage").innerHTML = state.environments
       .map((env) => {
-        const tot = totals[env.code] || { hot: 0, frozen: 0 };
+        const tot = totals[env.code] || EMPTY_GB();
+        const lines = enabledTiers()
+          .map((tier) => `<div>GB ${escapeAttr(tier.label)}: <strong>${num(tot[tier.code], 2)}</strong></div>`)
+          .join("");
         return `<div class="env-usage-card">
           <strong>${escapeAttr(env.code)}</strong>
           <span class="hint">${escapeAttr(env.label || "")}</span>
-          <div>${t("env.usageHot")}: <strong>${num(tot.hot, 2)}</strong></div>
-          <div>${t("env.usageFrz")}: <strong>${num(tot.frozen, 2)}</strong></div>
+          ${lines}
           <div class="hint">${env.applySurcharge ? t("env.roleSurcharge") : t("env.roleDedicated")}</div>
         </div>`;
       })
       .join("");
+
+    // platform column visibility hint for onprem
+    $$(".platform-cols-hint").forEach((el) => {
+      el.textContent = t(p.deployment === "onprem" ? "env.platformOnprem" : "env.platformCloud");
+    });
   }
 
   function filteredRows() {
@@ -409,18 +591,8 @@
       if (state.filterEnv !== "ALL" && r.env !== state.filterEnv) return false;
       if (!state.search) return true;
       const q = state.search.toLowerCase();
-      return (
-        String(r.family).toLowerCase().includes(q) ||
-        String(r.what || "").toLowerCase().includes(q)
-      );
+      return String(r.family).toLowerCase().includes(q) || String(r.what || "").toLowerCase().includes(q);
     });
-  }
-
-  function escapeAttr(s) {
-    return String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("<", "&lt;");
   }
 
   function envSelectOptions(selected) {
@@ -429,28 +601,46 @@
     return [...all]
       .map((e) => {
         const known = codes.includes(e);
-        const label = known ? e : `${e} ⚠`;
-        return `<option value="${escapeAttr(e)}" ${e === selected ? "selected" : ""}>${escapeAttr(label)}</option>`;
+        return `<option value="${escapeAttr(e)}" ${e === selected ? "selected" : ""}>${escapeAttr(known ? e : e + " ⚠")}</option>`;
       })
       .join("");
   }
 
   function renderMeasurement() {
-    const tbody = $("#meas-body");
+    const et = enabledTiers();
+    const head = $("#meas-head");
+    head.innerHTML = `<tr>
+      <th>${t("meas.th.family")}</th>
+      <th>${t("meas.th.env")}</th>
+      <th>${t("meas.th.what")}</th>
+      <th>${t("meas.th.eps15")}</th>
+      <th>${t("meas.th.kbdoc")}</th>
+      <th>${t("meas.th.docs")}</th>
+      ${et.map((x) => `<th>GB ${escapeAttr(x.label)}</th>`).join("")}
+      <th>${t("meas.th.idx")}</th>
+      <th>${t("meas.th.epsLife")}</th>
+      <th>${t("meas.th.age")}</th>
+      <th></th>
+    </tr>`;
+
     const rows = filteredRows();
-    tbody.innerHTML = rows
+    $("#meas-body").innerHTML = rows
       .map((r) => {
         const idx = state.rows.indexOf(r);
-        const unknown = !findEnv(r.env);
-        return `<tr data-idx="${idx}" class="${unknown ? "row-warn" : ""}">
+        const gbCells = et
+          .map(
+            (tier) =>
+              `<td><input data-fgb="${tier.code}" type="number" step="any" value="${r.gb?.[tier.code] ?? 0}"></td>`
+          )
+          .join("");
+        return `<tr data-idx="${idx}" class="${findEnv(r.env) ? "" : "row-warn"}">
           <td><input data-f="family" value="${escapeAttr(r.family)}"></td>
           <td><select data-f="env">${envSelectOptions(r.env)}</select></td>
           <td><input data-f="what" value="${escapeAttr(r.what || "")}"></td>
           <td><input data-f="eps15" type="number" step="any" value="${r.eps15}"></td>
           <td><input data-f="kbdoc" type="number" step="any" value="${r.kbdoc}"></td>
           <td><input data-f="docs" type="number" step="1" value="${r.docs}"></td>
-          <td><input data-f="gbHot" type="number" step="any" value="${r.gbHot}"></td>
-          <td><input data-f="gbFrozen" type="number" step="any" value="${r.gbFrozen}"></td>
+          ${gbCells}
           <td><input data-f="indices" type="number" step="1" value="${r.indices}"></td>
           <td><input data-f="epsLife" type="number" step="any" value="${r.epsLife}"></td>
           <td><input data-f="ageDays" type="number" step="any" value="${r.ageDays}"></td>
@@ -458,11 +648,8 @@
         </tr>`;
       })
       .join("");
-    $("#meas-count").textContent = t("dyn.measCount", {
-      shown: rows.length,
-      total: state.rows.length,
-    });
 
+    $("#meas-count").textContent = t("dyn.measCount", { shown: rows.length, total: state.rows.length });
     const filter = $("#filter-env");
     const cur = state.filterEnv;
     filter.innerHTML =
@@ -473,40 +660,48 @@
   }
 
   function renderAllocTable(target, withAdmin) {
+    const et = enabledTiers();
     const rows = allocations(withAdmin);
     const sorted = [...rows].sort((a, b) => b.ecuMes - a.ecuMes);
-    const el = $(target);
     const total = sorted.reduce((a, r) => a + r.ecuMes, 0);
-    el.innerHTML = `
+    const u = unit();
+    $(target).innerHTML = `
       <div class="hint" style="margin-bottom:.6rem">
         ${t("dyn.surchargeApplied")} <strong>${withAdmin ? pct(computeSurcharge()) : "0%"}</strong>
-        ${t("dyn.totalChargeback")} <strong>${money(total)} ${t("dyn.ecuMonth")}</strong>
+        ${t("dyn.totalChargeback")} <strong>${money(total)} ${u}/${t("dyn.month")}</strong>
       </div>
       <div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>${t("meas.th.family")}</th><th>${t("meas.th.env")}</th><th>${t("meas.th.hot")}</th><th>${t("dyn.th.shareHot")}</th>
-          <th>${t("meas.th.frz")}</th><th>${t("dyn.th.shareFrz")}</th>
-          <th>${t("dyn.th.cap")}</th><th>${t("dyn.th.snap")}</th>
-          <th>${t("dyn.th.elastic")}</th><th>${t("dyn.th.sur")}</th><th>${t("dyn.th.total")}</th><th>${t("dyn.th.year")}</th>
+          <th>${t("meas.th.family")}</th><th>${t("meas.th.env")}</th>
+          ${et.map((x) => `<th>GB ${escapeAttr(x.label)}</th><th>${t("dyn.share")} ${escapeAttr(x.label)}</th>`).join("")}
+          <th>${u}/${t("dyn.month")} ${t("dyn.capacity")}</th>
+          <th>${u}/${t("dyn.month")} ${t("dyn.snapshots")}</th>
+          <th>${u}/${t("dyn.month")} Elastic</th>
+          <th>${u}/${t("dyn.month")} ${t("dyn.surcharge")}</th>
+          <th>${u}/${t("dyn.month")} ${t("dyn.total")}</th>
+          <th>${u}/${t("dyn.year")}</th>
         </tr></thead>
         <tbody>
           ${sorted
-            .map(
-              (r) => `<tr class="${r.unknownEnv ? "row-warn" : ""}">
+            .map((r) => {
+              const gbShare = et
+                .map(
+                  (x) =>
+                    `<td class="num">${num(r.gb?.[x.code], 3)}</td><td class="num">${pct(r.shares?.[x.code] || 0)}</td>`
+                )
+                .join("");
+              return `<tr class="${r.unknownEnv ? "row-warn" : ""}">
               <td>${escapeAttr(r.family)}</td>
               <td><span class="badge">${escapeAttr(r.env)}</span></td>
-              <td class="num">${num(r.gbHot, 3)}</td>
-              <td class="num">${pct(r.shareHot)}</td>
-              <td class="num">${num(r.gbFrozen, 3)}</td>
-              <td class="num">${pct(r.shareFrozen)}</td>
+              ${gbShare}
               <td class="num">${money(r.ecuMesCap)}</td>
               <td class="num">${money(r.ecuMesSnap)}</td>
               <td class="num">${money(r.ecuMesElastic)}</td>
               <td class="num">${money(r.ecuMesRecargo)}</td>
               <td class="num money">${money(r.ecuMes)}</td>
               <td class="num money">${money(r.ecuYear)}</td>
-            </tr>`
-            )
+            </tr>`;
+            })
             .join("")}
         </tbody>
       </table></div>`;
@@ -515,19 +710,20 @@
   function renderWorkload(kind) {
     const names = kind === "cloud" ? state.cloudFamilies : state.onpremFamilies;
     const box = $(`#${kind}-chips`);
-    box.innerHTML = names
-      .map(
-        (n, i) =>
-          `<span class="chip">${escapeAttr(n)} <button type="button" data-kind="${kind}" data-i="${i}" aria-label="Remove">×</button></span>`
-      )
-      .join("") || `<span class="hint">${t("dyn.addFamiliesHint")}</span>`;
-
+    box.innerHTML =
+      names
+        .map(
+          (n, i) =>
+            `<span class="chip">${escapeAttr(n)} <button type="button" data-kind="${kind}" data-i="${i}">×</button></span>`
+        )
+        .join("") || `<span class="hint">${t("dyn.addFamiliesHint")}</span>`;
     const sum = sumFamilies(names, true);
-    $(`#${kind}-gbhot`).textContent = num(sum.gbHot, 2);
-    $(`#${kind}-gbfrozen`).textContent = num(sum.gbFrozen, 2);
+    const gbLines = enabledTiers()
+      .map((x) => `<div><span class="hint">GB ${escapeAttr(x.label)}</span><div><strong>${num(sum.gb[x.code], 2)}</strong></div></div>`)
+      .join("");
+    $(`#${kind}-gb`).innerHTML = gbLines;
     $(`#${kind}-ecumo`).textContent = money(sum.ecuMes);
     $(`#${kind}-ecuyr`).textContent = money(sum.ecuYear);
-
     const sel = $(`#${kind}-add`);
     const options = state.rows.map((r) => r.family).filter((f) => !names.includes(f));
     sel.innerHTML =
@@ -540,12 +736,8 @@
     const families = state.rows.map((r) => r.family);
     if (!families.includes(state.anyFamily) && families.length) state.anyFamily = families[0];
     sel.innerHTML = families
-      .map(
-        (f) =>
-          `<option value="${escapeAttr(f)}" ${f === state.anyFamily ? "selected" : ""}>${escapeAttr(f)}</option>`
-      )
+      .map((f) => `<option value="${escapeAttr(f)}" ${f === state.anyFamily ? "selected" : ""}>${escapeAttr(f)}</option>`)
       .join("");
-
     const row = state.rows.find((r) => r.family === state.anyFamily);
     const steps = $("#any-steps");
     if (!row) {
@@ -553,40 +745,38 @@
       return;
     }
     const totals = clusterTotals();
-    const sur = computeSurcharge();
-    const a = allocateRow(row, true, totals, sur);
-    const denHot = totals[row.env]?.hot || 0;
-    const denFrz = totals[row.env]?.frozen || 0;
+    const a = allocateRow(row, true, totals, computeSurcharge());
     const envObj = findEnv(row.env);
-    const items = [
-      [t("step.gbHotFam"), a.gbHot, t("step.gbHotFam.h")],
-      [t("step.gbHotCl", { env: row.env }), denHot, t("step.gbHotCl.h")],
-      [t("step.shareHot"), a.shareHot, t("step.shareHot.h"), true],
-      [t("step.gbFrzFam"), a.gbFrozen, t("step.gbFrzFam.h")],
-      [t("step.gbFrzCl"), denFrz, t("step.gbFrzCl.h")],
-      [t("step.shareFrz"), a.shareFrozen, t("step.shareFrz.h"), true],
-      [t("step.ecuHot"), a.ecuHHot, t("step.ecuHot.h")],
-      [t("step.ecuFrz"), a.ecuHFrozen, t("step.ecuFrz.h")],
-      [t("step.hours"), state.params.hoursMonth, t("step.hours.h")],
-      [t("step.cap"), a.ecuMesCap, t("step.cap.h")],
-      [t("step.snap"), a.ecuMesSnap, t("step.snap.h")],
-      [t("step.elastic"), a.ecuMesElastic, t("step.elastic.h")],
-      [t("step.sur"), sur, t("step.sur.h"), true],
-      [
-        t("step.surAmt"),
-        a.ecuMesRecargo,
-        envObj?.applySurcharge ? t("step.surAmt.h") : t("step.surAmt.dedicated"),
-      ],
-      [t("step.total"), a.ecuMes, t("step.total.h")],
-      [t("step.year"), a.ecuYear, t("step.year.h")],
-    ];
+    const u = unit();
+    const items = [];
+    for (const tier of enabledTiers()) {
+      const code = tier.code;
+      items.push([`GB ${tier.label} (${t("dyn.family")})`, a.gb?.[code] || 0, t("step.fromMeas")]);
+      items.push([`GB ${tier.label} (${row.env})`, totals[row.env]?.[code] || 0, t("step.sumEnv")]);
+      items.push([`${t("dyn.share")} ${tier.label}`, a.shares?.[code] || 0, t("step.shareHot.h"), true]);
+      items.push([`${tier.label} ${u}/h`, envObj?.rates?.[code] || 0, t("step.ecuHot.h")]);
+    }
+    items.push([t("step.hours"), state.params.hoursMonth, t("step.hours.h")]);
+    items.push([`${u}/${t("dyn.month")} ${t("dyn.capacity")}`, a.ecuMesCap, t("step.cap.h")]);
+    items.push([t("tier.snapVia"), a.snapTier, t("tier.snapVia.h")]);
+    items.push([`${u}/${t("dyn.month")} ${t("dyn.snapshots")}`, a.ecuMesSnap, t("step.snap.h")]);
+    items.push([`${u}/${t("dyn.month")} Elastic`, a.ecuMesElastic, t("step.elastic.h")]);
+    items.push([t("step.sur"), computeSurcharge(), t("step.sur.h"), true]);
+    items.push([
+      `${u}/${t("dyn.month")} ${t("dyn.surcharge")}`,
+      a.ecuMesRecargo,
+      envObj?.applySurcharge ? t("step.surAmt.h") : t("step.surAmt.dedicated"),
+    ]);
+    items.push([`${u}/${t("dyn.month")} ${t("dyn.total")}`, a.ecuMes, t("step.total.h")]);
+    items.push([`${u}/${t("dyn.year")}`, a.ecuYear, t("step.year.h")]);
+
     steps.innerHTML = items
       .map((it, i) => {
         const [label, value, hint, isPct] = it;
         return `<div class="step">
           <div class="step-n">${i + 1}</div>
-          <div><strong>${label}</strong><span>${hint}</span></div>
-          <em>${isPct ? pct(value) : typeof value === "number" && value > 20 ? money(value) : num(Number(value), 4)}</em>
+          <div><strong>${escapeAttr(String(label))}</strong><span>${escapeAttr(String(hint))}</span></div>
+          <em>${isPct ? pct(value) : typeof value === "number" && Math.abs(value) > 20 ? money(value) : typeof value === "number" ? num(value, 4) : escapeAttr(String(value))}</em>
         </div>`;
       })
       .join("");
@@ -611,67 +801,117 @@
     });
   }
 
+  function ensureRatesForTiers() {
+    for (const env of state.environments) {
+      for (const code of tierCodes()) {
+        if (env.rates[code] == null) env.rates[code] = 0;
+      }
+    }
+    for (const row of state.rows) {
+      for (const code of tierCodes()) {
+        if (row.gb[code] == null) row.gb[code] = 0;
+      }
+    }
+  }
+
   function bindEvents() {
     document.body.addEventListener("change", (e) => {
-      const tEl = e.target;
-      if (tEl.matches("[data-param]")) {
-        state.params[tEl.dataset.param] = Number(tEl.value);
+      const el = e.target;
+      if (el.matches("#deployment-mode")) {
+        state.params.deployment = el.value;
+        if (el.value === "onprem" && state.params.unit === "ECU") state.params.unit = "EUR";
+        if (el.value === "cloud" && state.params.unit === "EUR") state.params.unit = "ECU";
         renderAll();
         return;
       }
-      if (tEl.matches("#filter-env")) {
-        state.filterEnv = tEl.value;
+      if (el.matches("#snapshot-tier")) {
+        state.params.snapshotAllocTier = el.value;
+        renderAll();
+        return;
+      }
+      if (el.matches("[data-param]")) {
+        const k = el.dataset.param;
+        state.params[k] = k === "unit" ? el.value : Number(el.value);
+        renderAll();
+        return;
+      }
+      if (el.matches("#filter-env")) {
+        state.filterEnv = el.value;
         renderMeasurement();
         return;
       }
-      if (tEl.matches("#any-family")) {
-        state.anyFamily = tEl.value;
+      if (el.matches("#any-family")) {
+        state.anyFamily = el.value;
         renderAnyFamily();
         save();
         return;
       }
-      if (tEl.matches("#cloud-add") && tEl.value) {
-        state.cloudFamilies.push(tEl.value);
-        tEl.value = "";
+      if (el.matches("#cloud-add") && el.value) {
+        state.cloudFamilies.push(el.value);
+        el.value = "";
         renderWorkload("cloud");
         save();
         return;
       }
-      if (tEl.matches("#onprem-add") && tEl.value) {
-        state.onpremFamilies.push(tEl.value);
-        tEl.value = "";
+      if (el.matches("#onprem-add") && el.value) {
+        state.onpremFamilies.push(el.value);
+        el.value = "";
         renderWorkload("onprem");
         save();
         return;
       }
 
-      const envTr = tEl.closest("tr[data-ei]");
-      if (envTr && tEl.matches("[data-ef]")) {
+      const tierTr = el.closest("tr[data-ti]");
+      if (tierTr && el.matches("[data-tf]")) {
+        const i = Number(tierTr.dataset.ti);
+        const f = el.dataset.tf;
+        if (f === "enabled") {
+          const enabledCount = state.tiers.filter((x) => x.enabled).length;
+          if (!el.checked && enabledCount <= 1) {
+            el.checked = true;
+            toast(t("toast.tierMin"));
+            return;
+          }
+          state.tiers[i].enabled = el.checked;
+        } else if (f === "label") state.tiers[i].label = el.value;
+        else if (f === "code") state.tiers[i].code = el.value.trim().toLowerCase();
+        ensureRatesForTiers();
+        renderAll();
+        return;
+      }
+
+      const envTr = el.closest("tr[data-ei]");
+      if (envTr) {
         const i = Number(envTr.dataset.ei);
-        const f = tEl.dataset.ef;
-        if (f === "applySurcharge") {
-          state.environments[i].applySurcharge = tEl.checked;
-        } else if (f === "code") {
-          const old = state.environments[i].code;
-          const next = tEl.value.trim();
-          state.environments[i].code = next;
-          renameEnvInRows(old, next);
-        } else if (f === "label") {
-          state.environments[i].label = tEl.value;
-        } else {
-          state.environments[i][f] = Number(tEl.value);
+        if (el.matches("[data-ef]")) {
+          const f = el.dataset.ef;
+          if (f === "applySurcharge") state.environments[i].applySurcharge = el.checked;
+          else if (f === "code") {
+            const old = state.environments[i].code;
+            state.environments[i].code = el.value.trim();
+            renameEnvInRows(old, state.environments[i].code);
+          } else if (f === "label") state.environments[i].label = el.value;
+          else if (f === "snapshots") state.environments[i].snapshots = Number(el.value);
+        } else if (el.matches("[data-ef-rate]")) {
+          state.environments[i].rates[el.dataset.efRate] = Number(el.value);
+        } else if (el.matches("[data-ef-plat]")) {
+          state.environments[i].platform[el.dataset.efPlat] = Number(el.value);
         }
         renderAll();
         return;
       }
 
-      const tr = tEl.closest("tr[data-idx]");
-      if (tr && tEl.matches("[data-f]")) {
+      const tr = el.closest("tr[data-idx]");
+      if (tr) {
         const idx = Number(tr.dataset.idx);
-        const f = tEl.dataset.f;
-        let v = tEl.value;
-        if (f !== "family" && f !== "what" && f !== "env") v = Number(v);
-        state.rows[idx][f] = v;
+        if (el.matches("[data-f]")) {
+          const f = el.dataset.f;
+          let v = el.value;
+          if (!["family", "what", "env"].includes(f)) v = Number(v);
+          state.rows[idx][f] = v;
+        } else if (el.matches("[data-fgb]")) {
+          state.rows[idx].gb[el.dataset.fgb] = Number(el.value);
+        }
         renderAll();
       }
     });
@@ -724,15 +964,14 @@
         n += 1;
         code = `ENV${n}`;
       }
+      const rates = EMPTY_RATES();
+      rates.hot = 1;
       state.environments.push({
         code,
         label: t("env.newLabel"),
         applySurcharge: true,
-        hot: 1,
-        frozen: 0,
-        kibana: 0,
-        integrations: 0,
-        tiebreaker: 0,
+        rates,
+        platform: EMPTY_PLATFORM(),
         snapshots: 0,
       });
       renderAll();
@@ -740,21 +979,28 @@
       $(".tab[data-tab='parameters']").click();
     });
 
+    $("#btn-add-tier").addEventListener("click", () => {
+      let n = 1;
+      let code = `tier${n}`;
+      while (tierCodes().includes(code)) {
+        n += 1;
+        code = `tier${n}`;
+      }
+      state.tiers.push({ code, label: t("tier.newLabel"), enabled: true });
+      ensureRatesForTiers();
+      renderAll();
+      toast(t("toast.tierAdded", { code }));
+    });
+
     $("#btn-add-row").addEventListener("click", () => {
       const first = envCodes()[0] || "ENV1";
-      state.rows.unshift({
-        family: "new-family",
-        env: first,
-        what: "",
-        eps15: 0,
-        kbdoc: 1,
-        docs: 0,
-        gbHot: 1,
-        gbFrozen: 0,
-        indices: 1,
-        epsLife: 0,
-        ageDays: 1,
-      });
+      state.rows.unshift(
+        normalizeRow({
+          family: "new-family",
+          env: first,
+          gb: { hot: 1, warm: 0, cold: 0, frozen: 0 },
+        })
+      );
       renderAll();
       toast(t("toast.added"));
       $(".tab[data-tab='measurement']").click();
@@ -763,8 +1009,9 @@
     $("#btn-reset-sample").addEventListener("click", () => {
       if (!confirm(t("toast.resetConfirm"))) return;
       state.params = structuredClone(DEFAULT_PARAMS);
+      state.tiers = structuredClone(DEFAULT_TIERS);
       state.environments = structuredClone(DEFAULT_ENVIRONMENTS);
-      state.rows = structuredClone(window.DK_SEED_MEASUREMENT || []);
+      state.rows = (window.DK_SEED_MEASUREMENT || []).map(normalizeRow);
       state.cloudFamilies = [...SAMPLE_CLOUD];
       state.onpremFamilies = [...SAMPLE_ONPREM];
       renderAll();
@@ -772,49 +1019,38 @@
     });
 
     $("#btn-export-csv").addEventListener("click", () => {
-      const header = [
-        "family",
-        "env",
-        "what",
-        "eps15",
-        "kbdoc",
-        "docs",
-        "gbHot",
-        "gbFrozen",
-        "indices",
-        "epsLife",
-        "ageDays",
-      ];
+      const et = enabledTiers();
+      const header = ["family", "env", "what", "eps15", "kbdoc", "docs", ...et.map((x) => `gb_${x.code}`), "indices", "epsLife", "ageDays"];
       const lines = [header.join(",")].concat(
-        state.rows.map((r) =>
-          header
-            .map((h) => {
-              const v = r[h] ?? "";
-              const s = String(v).replaceAll('"', '""');
+        state.rows.map((r) => {
+          const vals = [r.family, r.env, r.what, r.eps15, r.kbdoc, r.docs, ...et.map((x) => r.gb[x.code] || 0), r.indices, r.epsLife, r.ageDays];
+          return vals
+            .map((v) => {
+              const s = String(v ?? "").replaceAll('"', '""');
               return /[",\n]/.test(s) ? `"${s}"` : s;
             })
-            .join(",")
-        )
+            .join(",");
+        })
       );
       download("measurement.csv", lines.join("\n"), "text/csv");
       toast(t("toast.csvOut"));
     });
 
     $("#btn-export-envs").addEventListener("click", () => {
-      const header = [
-        "code",
-        "label",
-        "applySurcharge",
-        "hot",
-        "frozen",
-        "kibana",
-        "integrations",
-        "tiebreaker",
-        "snapshots",
-      ];
+      const et = enabledTiers();
+      const header = ["code", "label", "applySurcharge", ...et.map((x) => `rate_${x.code}`), "kibana", "integrations", "tiebreaker", "snapshots"];
       const lines = [header.join(",")].concat(
         state.environments.map((e) =>
-          header.map((h) => (h === "applySurcharge" ? (e[h] ? "TRUE" : "FALSE") : e[h])).join(",")
+          [
+            e.code,
+            e.label,
+            e.applySurcharge ? "TRUE" : "FALSE",
+            ...et.map((x) => e.rates[x.code] || 0),
+            e.platform.kibana,
+            e.platform.integrations,
+            e.platform.tiebreaker,
+            e.snapshots,
+          ].join(",")
         )
       );
       download("environments.csv", lines.join("\n"), "text/csv");
@@ -832,7 +1068,6 @@
         return;
       }
       state.rows = parsed;
-      // auto-add missing env codes from CSV
       const known = new Set(envCodes());
       for (const r of parsed) {
         if (r.env && !known.has(r.env)) {
@@ -840,15 +1075,16 @@
             code: r.env,
             label: r.env,
             applySurcharge: true,
-            hot: 1,
-            frozen: 0,
-            kibana: 0,
-            integrations: 0,
-            tiebreaker: 0,
+            rates: { ...EMPTY_RATES(), hot: 1 },
+            platform: EMPTY_PLATFORM(),
             snapshots: 0,
           });
           known.add(r.env);
         }
+      }
+      // auto-enable tiers that have data
+      for (const tier of state.tiers) {
+        if (!tier.enabled && parsed.some((r) => (r.gb?.[tier.code] || 0) > 0)) tier.enabled = true;
       }
       renderAll();
       toast(t("toast.csvIn", { n: parsed.length }));
@@ -856,20 +1092,25 @@
     });
 
     $("#btn-export-alloc").addEventListener("click", () => {
+      const et = enabledTiers();
       const rows = allocations(true);
-      const header = [
-        "family",
-        "env",
-        "gbHot",
-        "shareHot",
-        "gbFrozen",
-        "shareFrozen",
-        "ecuMesElastic",
-        "ecuMesRecargo",
-        "ecuMes",
-        "ecuYear",
-      ];
-      const lines = [header.join(",")].concat(rows.map((r) => header.map((h) => r[h]).join(",")));
+      const header = ["family", "env", ...et.map((x) => `gb_${x.code}`), ...et.map((x) => `share_${x.code}`), "ecuMesCap", "ecuMesSnap", "ecuMesElastic", "ecuMesRecargo", "ecuMes", "ecuYear"];
+      const lines = [header.join(",")].concat(
+        rows.map((r) =>
+          [
+            r.family,
+            r.env,
+            ...et.map((x) => r.gb?.[x.code] || 0),
+            ...et.map((x) => r.shares?.[x.code] || 0),
+            r.ecuMesCap,
+            r.ecuMesSnap,
+            r.ecuMesElastic,
+            r.ecuMesRecargo,
+            r.ecuMes,
+            r.ecuYear,
+          ].join(",")
+        )
+      );
       download("allocation-with-admin.csv", lines.join("\n"), "text/csv");
       toast(t("toast.allocOut"));
     });
@@ -897,19 +1138,23 @@
         headers.forEach((h, i) => {
           obj[h] = cols[i] ?? "";
         });
-        return {
+        const gb = EMPTY_GB();
+        gb.hot = Number(obj.gb_hot || obj.gbHot || obj["GB hot"] || 0);
+        gb.warm = Number(obj.gb_warm || obj.gbWarm || obj["GB warm"] || 0);
+        gb.cold = Number(obj.gb_cold || obj.gbCold || obj["GB cold"] || 0);
+        gb.frozen = Number(obj.gb_frozen || obj.gbFrozen || obj["GB frozen"] || 0);
+        return normalizeRow({
           family: obj.family || obj.Familia || "",
           env: obj.env || obj.Entorno || envCodes()[0] || "ENV1",
-          what: obj.what || obj.Que || "",
+          what: obj.what || "",
           eps15: Number(obj.eps15 || 0),
           kbdoc: Number(obj.kbdoc || 0),
           docs: Number(obj.docs || 0),
-          gbHot: Number(obj.gbHot || obj["GB hot"] || 0),
-          gbFrozen: Number(obj.gbFrozen || obj["GB frozen"] || 0),
           indices: Number(obj.indices || 0),
           epsLife: Number(obj.epsLife || 0),
           ageDays: Number(obj.ageDays || 0),
-        };
+          gb,
+        });
       })
       .filter((r) => r.family);
   }

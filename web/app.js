@@ -32,6 +32,8 @@
     "pro-k8s-onprem-applogs-sso",
   ];
 
+  const LANG_KEY = "dk-elastic-cost-allocator-lang";
+
   const state = {
     params: structuredClone(DEFAULT_PARAMS),
     rows: [],
@@ -44,6 +46,21 @@
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const t = (...args) => window.t(...args);
+
+  function detectLang() {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved === "es" || saved === "en") return saved;
+    return (navigator.language || "").toLowerCase().startsWith("es") ? "es" : "en";
+  }
+
+  function setLang(lang, announce) {
+    window.DK_LANG = lang === "es" ? "es" : "en";
+    localStorage.setItem(LANG_KEY, window.DK_LANG);
+    window.applyI18n();
+    renderAll();
+    if (announce) toast(t(window.DK_LANG === "es" ? "toast.langEs" : "toast.langEn"));
+  }
 
   function toast(msg) {
     const el = $("#toast");
@@ -202,7 +219,7 @@
     $("#kpi-ecu-year").textContent = money(ecuMes * 12);
     $("#kpi-surcharge").textContent = pct(surcharge);
     $("#kpi-hot").textContent = `${num(totals.PRE.hot + totals.PRO.hot + totals.MON.hot, 1)} GB`;
-    $("#kpi-families").textContent = `${state.rows.length} families`;
+    $("#kpi-families").textContent = t("dyn.families", { n: state.rows.length });
   }
 
   function renderParams() {
@@ -291,7 +308,10 @@
         </tr>`;
       })
       .join("");
-    $("#meas-count").textContent = `${rows.length} / ${state.rows.length} families`;
+    $("#meas-count").textContent = t("dyn.measCount", {
+      shown: rows.length,
+      total: state.rows.length,
+    });
   }
 
   function escapeAttr(s) {
@@ -308,15 +328,15 @@
     const total = sorted.reduce((a, r) => a + r.ecuMes, 0);
     el.innerHTML = `
       <div class="hint" style="margin-bottom:.6rem">
-        Surcharge applied: <strong>${withAdmin ? pct(computeSurcharge()) : "0%"}</strong>
-        · Total to charge back: <strong>${money(total)} ECU/month</strong>
+        ${t("dyn.surchargeApplied")} <strong>${withAdmin ? pct(computeSurcharge()) : "0%"}</strong>
+        ${t("dyn.totalChargeback")} <strong>${money(total)} ${t("dyn.ecuMonth")}</strong>
       </div>
       <div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Family</th><th>Env</th><th>GB hot</th><th>Share hot</th>
-          <th>GB frozen</th><th>Share frozen</th>
-          <th>ECU/mo capacity</th><th>ECU/mo snapshots</th>
-          <th>ECU/mo Elastic</th><th>ECU/mo surcharge</th><th>ECU/mo total</th><th>ECU/year</th>
+          <th>${t("meas.th.family")}</th><th>${t("meas.th.env")}</th><th>${t("meas.th.hot")}</th><th>${t("dyn.th.shareHot")}</th>
+          <th>${t("meas.th.frz")}</th><th>${t("dyn.th.shareFrz")}</th>
+          <th>${t("dyn.th.cap")}</th><th>${t("dyn.th.snap")}</th>
+          <th>${t("dyn.th.elastic")}</th><th>${t("dyn.th.sur")}</th><th>${t("dyn.th.total")}</th><th>${t("dyn.th.year")}</th>
         </tr></thead>
         <tbody>
           ${sorted
@@ -349,7 +369,7 @@
         (n, i) =>
           `<span class="chip">${escapeAttr(n)} <button type="button" data-kind="${kind}" data-i="${i}" aria-label="Remove">×</button></span>`
       )
-      .join("") || `<span class="hint">Add families from Measurement</span>`;
+      .join("") || `<span class="hint">${t("dyn.addFamiliesHint")}</span>`;
 
     const sum = sumFamilies(names, true);
     $(`#${kind}-gbhot`).textContent = num(sum.gbHot, 2);
@@ -362,7 +382,7 @@
       .map((r) => r.family)
       .filter((f) => !names.includes(f));
     sel.innerHTML =
-      `<option value="">Add family…</option>` +
+      `<option value="">${t("dyn.addFamily")}</option>` +
       options.map((f) => `<option value="${escapeAttr(f)}">${escapeAttr(f)}</option>`).join("");
   }
 
@@ -382,7 +402,7 @@
     const row = state.rows.find((r) => r.family === state.anyFamily);
     const steps = $("#any-steps");
     if (!row) {
-      steps.innerHTML = `<p class="hint">No family selected.</p>`;
+      steps.innerHTML = `<p class="hint">${t("dyn.noFamily")}</p>`;
       return;
     }
     const totals = clusterTotals();
@@ -391,22 +411,22 @@
     const denHot = totals[row.env].hot;
     const denFrz = totals[row.env].frozen;
     const items = [
-      ["GB hot (family)", a.gbHot, "From Measurement"],
-      ["GB hot (cluster " + row.env + ")", denHot, "Sum of Measurement for env"],
-      ["Hot share", a.shareHot, "family / cluster", true],
-      ["GB frozen (family)", a.gbFrozen, "From Measurement"],
-      ["GB frozen (cluster)", denFrz, "Sum of Measurement for env"],
-      ["Frozen share", a.shareFrozen, "family / cluster", true],
-      ["ECU/h hot", a.ecuHHot, "Parameters"],
-      ["ECU/h frozen", a.ecuHFrozen, "Parameters"],
-      ["Hours / month", state.params.hoursMonth, "Parameters"],
-      ["ECU/month capacity", a.ecuMesCap, "(share×rates)×hours"],
-      ["ECU/month snapshots", a.ecuMesSnap, "share × cluster snapshots"],
-      ["ECU/month Elastic", a.ecuMesElastic, "capacity + snapshots"],
-      ["Surcharge", sur, "Commit coverage uplift", true],
-      ["ECU/month surcharge", a.ecuMesRecargo, "Elastic × surcharge (PRE/PRO only)"],
-      ["ECU/month chargeback", a.ecuMes, "Elastic + surcharge"],
-      ["ECU/year", a.ecuYear, "× 12"],
+      [t("step.gbHotFam"), a.gbHot, t("step.gbHotFam.h")],
+      [t("step.gbHotCl", { env: row.env }), denHot, t("step.gbHotCl.h")],
+      [t("step.shareHot"), a.shareHot, t("step.shareHot.h"), true],
+      [t("step.gbFrzFam"), a.gbFrozen, t("step.gbFrzFam.h")],
+      [t("step.gbFrzCl"), denFrz, t("step.gbFrzCl.h")],
+      [t("step.shareFrz"), a.shareFrozen, t("step.shareFrz.h"), true],
+      [t("step.ecuHot"), a.ecuHHot, t("step.ecuHot.h")],
+      [t("step.ecuFrz"), a.ecuHFrozen, t("step.ecuFrz.h")],
+      [t("step.hours"), state.params.hoursMonth, t("step.hours.h")],
+      [t("step.cap"), a.ecuMesCap, t("step.cap.h")],
+      [t("step.snap"), a.ecuMesSnap, t("step.snap.h")],
+      [t("step.elastic"), a.ecuMesElastic, t("step.elastic.h")],
+      [t("step.sur"), sur, t("step.sur.h"), true],
+      [t("step.surAmt"), a.ecuMesRecargo, t("step.surAmt.h")],
+      [t("step.total"), a.ecuMes, t("step.total.h")],
+      [t("step.year"), a.ecuYear, t("step.year.h")],
     ];
     steps.innerHTML = items
       .map((it, i) => {
@@ -496,7 +516,7 @@
       if (btn) {
         state.rows.splice(Number(btn.dataset.del), 1);
         renderAll();
-        toast("Family removed");
+        toast(t("toast.removed"));
         return;
       }
       const chipBtn = e.target.closest(".chip button");
@@ -507,6 +527,10 @@
         else state.onpremFamilies.splice(i, 1);
         renderWorkload(kind);
         save();
+      }
+      const langBtn = e.target.closest("[data-lang-btn]");
+      if (langBtn) {
+        setLang(langBtn.getAttribute("data-lang-btn"), true);
       }
     });
 
@@ -525,18 +549,18 @@
         ageDays: 1,
       });
       renderAll();
-      toast("Row added — edit the yellow-style fields");
+      toast(t("toast.added"));
       $(".tab[data-tab='measurement']").click();
     });
 
     $("#btn-reset-sample").addEventListener("click", () => {
-      if (!confirm("Reset Measurement and Parameters to sample demo data?")) return;
+      if (!confirm(t("toast.resetConfirm"))) return;
       state.params = structuredClone(DEFAULT_PARAMS);
       state.rows = structuredClone(window.DK_SEED_MEASUREMENT || []);
       state.cloudFamilies = [...SAMPLE_CLOUD];
       state.onpremFamilies = [...SAMPLE_ONPREM];
       renderAll();
-      toast("Sample data restored");
+      toast(t("toast.reset"));
     });
 
     $("#btn-export-csv").addEventListener("click", () => {
@@ -565,7 +589,7 @@
         )
       );
       download("measurement.csv", lines.join("\n"), "text/csv");
-      toast("CSV exported");
+      toast(t("toast.csvOut"));
     });
 
     $("#btn-import-csv").addEventListener("click", () => $("#file-csv").click());
@@ -575,12 +599,12 @@
       const text = await file.text();
       const parsed = parseCsv(text);
       if (!parsed.length) {
-        toast("No rows found in CSV");
+        toast(t("toast.csvEmpty"));
         return;
       }
       state.rows = parsed;
       renderAll();
-      toast(`Imported ${parsed.length} families`);
+      toast(t("toast.csvIn", { n: parsed.length }));
       e.target.value = "";
     });
 
@@ -602,7 +626,7 @@
         rows.map((r) => header.map((h) => r[h]).join(","))
       );
       download("allocation-with-admin.csv", lines.join("\n"), "text/csv");
-      toast("Allocation CSV exported");
+      toast(t("toast.allocOut"));
     });
   }
 
@@ -664,6 +688,7 @@
 
   function init() {
     load();
+    setLang(detectLang(), false);
     bindTabs();
     bindEvents();
     renderAll();

@@ -1,0 +1,26 @@
+# OS / Office
+Thumbs.db
+Desktop.ini
+~$*
+*.tmp
+*.bak
+
+# Private / real data — never publish
+*_PRIVATE*
+*credentials*
+*.env
+credentials.local.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Excel lock / autosave
+*.xlk

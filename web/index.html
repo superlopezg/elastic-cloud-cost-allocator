@@ -44,7 +44,7 @@
       <div class="kpis">
         <div class="kpi"><span data-i18n="kpi.month">Chargeback / month</span><strong id="kpi-ecu-month">—</strong><small data-i18n="kpi.month.sub">with admin surcharge</small></div>
         <div class="kpi"><span data-i18n="kpi.year">Chargeback / year</span><strong id="kpi-ecu-year">—</strong><small data-i18n="kpi.year.sub">× 12</small></div>
-        <div class="kpi"><span data-i18n="kpi.surcharge">Computed surcharge</span><strong id="kpi-surcharge">—</strong><small data-i18n="kpi.surcharge.sub">PRE + PRO uplift</small></div>
+        <div class="kpi"><span data-i18n="kpi.surcharge">Computed surcharge</span><strong id="kpi-surcharge">—</strong><small id="kpi-surcharge-sub">uplift on surchargeable envs</small></div>
         <div class="kpi"><span data-i18n="kpi.hot">Measured hot</span><strong id="kpi-hot">—</strong><small id="kpi-families">0 families</small></div>
       </div>
     </div>
@@ -67,8 +67,8 @@
         <p class="lede" data-i18n="howto.lede">Same logic as the Excel workbook. Follow these steps, then explore Parameters, Measurement and Allocations.</p>
         <div class="howto-grid">
           <article class="howto-step"><span class="howto-n">1</span><div><strong data-i18n="howto.s1.t">Open Parameters</strong><p data-i18n="howto.s1.d">Enter your Elastic Cloud rates (ECU/h), snapshot monthly costs, hours/month and annual ECU commit. Yellow fields are editable.</p></div></article>
-          <article class="howto-step"><span class="howto-n">2</span><div><strong data-i18n="howto.s2.t">Fill Measurement</strong><p data-i18n="howto.s2.d">Add one row per index family or data-stream pattern with GB hot, GB frozen and environment (PRE / PRO / MON). Or import a CSV.</p></div></article>
-          <article class="howto-step"><span class="howto-n">3</span><div><strong data-i18n="howto.s3.t">Read Allocations</strong><p data-i18n="howto.s3.d">See the ECU/month share per family without admin cost, and with the PRE/PRO surcharge that covers commit &amp; platform gap.</p></div></article>
+          <article class="howto-step"><span class="howto-n">2</span><div><strong data-i18n="howto.s2.t">Fill Measurement</strong><p data-i18n="howto.s2.d">Add one row per index family or data-stream pattern with GB hot, GB frozen and an environment code from Parameters. Or import a CSV.</p></div></article>
+          <article class="howto-step"><span class="howto-n">3</span><div><strong data-i18n="howto.s3.t">Read Allocations</strong><p data-i18n="howto.s3.d">See the ECU/month share per family without admin cost, and with surcharge on environments marked for commit uplift.</p></div></article>
           <article class="howto-step"><span class="howto-n">4</span><div><strong data-i18n="howto.s4.t">Group workloads</strong><p data-i18n="howto.s4.d">In Workloads, pick several families for a business owner (e.g. cloud app logs) and get a rolled-up chargeback.</p></div></article>
           <article class="howto-step"><span class="howto-n">5</span><div><strong data-i18n="howto.s5.t">Inspect one family</strong><p data-i18n="howto.s5.d">Any family walks through the same 16 calculation steps as the Excel sheet — useful for audits and explanations.</p></div></article>
         </div>
@@ -84,7 +84,7 @@
         </div>
         <div class="card card--formula">
           <h2 data-i18n="howto.formula.title">Allocation formula (simplified)</h2>
-          <pre class="formula" data-i18n="howto.formula.body">family_ECU/month ≈ (GB_hot_family / GB_hot_cluster) × ECU/h_hot × hours + (GB_frozen_family / GB_frozen_cluster) × (ECU/h_frozen × hours + snapshots/month) + optional PRE/PRO surcharge</pre>
+          <pre class="formula" data-i18n="howto.formula.body">family_ECU/month ≈ (GB_hot_family / GB_hot_env) × ECU/h_hot × hours + (GB_frozen_family / GB_frozen_env) × (ECU/h_frozen × hours + snapshots/month) + optional surcharge if env is marked</pre>
         </div>
       </div>
     </section>
@@ -93,7 +93,7 @@
     <section class="panel" id="panel-parameters">
       <div class="card">
         <h2 data-i18n="params.title">Parameters</h2>
-        <p class="lede" data-i18n="params.lede">Yellow-style fields are editable (same idea as the Excel). Rates are illustrative sample ECU/h — replace with your Elastic Cloud console / invoice figures.</p>
+        <p class="lede" data-i18n="params.lede">Global contract figures. Environments below are fully configurable — add DEV, INT, UAT, PROD, MONITORING or any codes your org uses.</p>
         <div class="grid-4">
           <div class="field editable"><label data-i18n="params.hours">Hours / month</label><input data-param="hoursMonth" type="number" step="1"></div>
           <div class="field editable"><label data-i18n="params.commit">Annual ECU commit</label><input data-param="annualCommit" type="number" step="1"></div>
@@ -102,49 +102,51 @@
         </div>
       </div>
 
-      <div class="grid-2">
-        <div class="card">
-          <h2 data-i18n="params.rates.title">ECU / hour rates</h2>
-          <p class="lede" data-i18n="params.rates.lede">Hot, frozen and platform components per environment.</p>
-          <div class="grid-3">
-            <div class="field editable"><label data-i18n="params.hotPre">Hot PRE</label><input data-param="hot.PRE" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.hotPro">Hot PRO</label><input data-param="hot.PRO" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.hotMon">Hot / Monitoring</label><input data-param="hot.MON" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.frzPre">Frozen PRE</label><input data-param="frozen.PRE" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.frzPro">Frozen PRO</label><input data-param="frozen.PRO" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.frzMon">Frozen MON</label><input data-param="frozen.MON" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.kibPre">Kibana PRE</label><input data-param="kibana.PRE" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.kibPro">Kibana PRO</label><input data-param="kibana.PRO" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.intPre">Integrations PRE</label><input data-param="integrations.PRE" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.intPro">Integrations PRO</label><input data-param="integrations.PRO" type="number" step="any"></div>
-            <div class="field editable"><label data-i18n="params.tiePro">Tiebreaker PRO</label><input data-param="tiebreaker.PRO" type="number" step="any"></div>
-          </div>
+      <div class="card">
+        <h2 data-i18n="env.title">Environments (clusters)</h2>
+        <p class="lede" data-i18n="env.lede">Each row is one billable environment / cluster. Tick “Surcharge” for workloads that share the annual commit uplift. Untick for dedicated clusters (e.g. monitoring) billed at their own rate.</p>
+        <div class="toolbar">
+          <button class="btn btn--primary btn--sm" id="btn-add-env" type="button" data-i18n="env.add">+ Add environment</button>
+          <button class="btn btn--secondary btn--sm" id="btn-export-envs" type="button" data-i18n="env.export">Export envs CSV</button>
         </div>
-        <div class="card">
-          <h2 data-i18n="params.snap.title">Snapshots ECU / month</h2>
-          <p class="lede" data-i18n="params.snap.lede">Closed-month snapshot bill, allocated by frozen share (or hot share if frozen is empty).</p>
-          <div class="grid-3">
-            <div class="field editable"><label>PRE</label><input data-param="snapshots.PRE" type="number" step="any"></div>
-            <div class="field editable"><label>PRO</label><input data-param="snapshots.PRO" type="number" step="any"></div>
-            <div class="field editable"><label>MON</label><input data-param="snapshots.MON" type="number" step="any"></div>
-          </div>
-          <hr style="border:0;border-top:1px solid var(--dk-line);margin:1rem 0">
-          <div class="grid-2">
-            <div><span class="hint" data-i18n="params.out.surcharge">Computed surcharge</span><div style="font-size:1.6rem;font-weight:700;color:var(--dk-teal-dark)" id="out-surcharge">—</div></div>
-            <div><span class="hint" data-i18n="params.out.target">Annual target (commit × margin)</span><div style="font-size:1.2rem;font-weight:700" id="out-objetivo">—</div></div>
-            <div><span class="hint" data-i18n="params.out.consumo">Estimated consumption</span><div id="out-consumo">—</div></div>
-            <div><span class="hint" data-i18n="params.out.platform">Platform annual</span><div id="out-platform">—</div></div>
-            <div><span class="hint" data-i18n="params.out.mon">Monitoring annual</span><div id="out-mon">—</div></div>
-          </div>
+        <div class="table-wrap">
+          <table class="data data--envs">
+            <thead>
+              <tr>
+                <th data-i18n="env.th.code">Code</th>
+                <th data-i18n="env.th.label">Label</th>
+                <th data-i18n="env.th.surcharge">Surcharge</th>
+                <th data-i18n="env.th.hot">Hot ECU/h</th>
+                <th data-i18n="env.th.frozen">Frozen ECU/h</th>
+                <th data-i18n="env.th.kibana">Kibana</th>
+                <th data-i18n="env.th.integrations">Integrations</th>
+                <th data-i18n="env.th.tiebreaker">Tiebreaker</th>
+                <th data-i18n="env.th.snapshots">Snapshots / mo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="env-body"></tbody>
+          </table>
         </div>
       </div>
 
-      <div class="card">
-        <h2 data-i18n="params.usage.title">Cluster usage from Measurement</h2>
-        <p class="lede" data-i18n="params.usage.lede">Auto-summed denominators used for share calculation.</p>
-        <div class="grid-3">
-          <div><span class="hint" data-i18n="params.usage.hot">GB hot PRE / PRO / MON</span><div><strong id="out-hot-pre">—</strong> / <strong id="out-hot-pro">—</strong> / <strong id="out-hot-mon">—</strong></div></div>
-          <div><span class="hint" data-i18n="params.usage.frz">GB frozen PRE / PRO / MON</span><div><strong id="out-frz-pre">—</strong> / <strong id="out-frz-pro">—</strong> / <strong id="out-frz-mon">—</strong></div></div>
+      <div class="grid-2">
+        <div class="card">
+          <h2 data-i18n="params.finance.title">Commit coverage</h2>
+          <p class="lede" data-i18n="params.finance.lede">Surcharge = (annual target − dedicated env annual) / surchargeable base − 1.</p>
+          <div class="grid-2">
+            <div><span class="hint" data-i18n="params.out.surcharge">Computed surcharge</span><div style="font-size:1.6rem;font-weight:700;color:var(--dk-teal-dark)" id="out-surcharge">—</div></div>
+            <div><span class="hint" data-i18n="params.out.target">Annual target (commit × margin)</span><div style="font-size:1.2rem;font-weight:700" id="out-objetivo">—</div></div>
+            <div><span class="hint" data-i18n="params.out.base">Surchargeable base / year</span><div id="out-base">—</div></div>
+            <div><span class="hint" data-i18n="params.out.dedicated">Dedicated envs / year</span><div id="out-dedicated">—</div></div>
+            <div><span class="hint" data-i18n="params.out.platform">Platform annual (surchargeable)</span><div id="out-platform">—</div></div>
+            <div><span class="hint" data-i18n="params.out.consumo">Estimated consumption</span><div id="out-consumo">—</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2 data-i18n="params.usage.title">Measured usage by environment</h2>
+          <p class="lede" data-i18n="params.usage.lede">Denominators for share calculation (from Measurement).</p>
+          <div class="env-usage-grid" id="env-usage"></div>
         </div>
       </div>
     </section>
@@ -163,9 +165,6 @@
           <div class="spacer"></div>
           <select id="filter-env">
             <option value="ALL" data-i18n="meas.allEnvs">All envs</option>
-            <option value="PRE">PRE</option>
-            <option value="PRO">PRO</option>
-            <option value="MON">MON</option>
           </select>
           <input id="search-family" type="search" data-i18n="meas.search" data-i18n-mode="placeholder" placeholder="Search family…" style="min-width:180px;border:1px solid var(--dk-line);border-radius:8px;padding:.45rem .65rem;font:inherit">
           <span class="hint" id="meas-count"></span>
@@ -207,7 +206,7 @@
       </div>
       <div class="card">
         <h2 data-i18n="alloc.with.title">With admin cost</h2>
-        <p class="lede" data-i18n="alloc.with.lede">Same allocation plus PRE/PRO surcharge that covers platform gap, egress/API, peak buffer and ops margin.</p>
+        <p class="lede" data-i18n="alloc.with.lede">Same allocation plus surcharge on environments marked for commit uplift (platform gap, egress/API, peak buffer, ops margin).</p>
         <div id="alloc-with"></div>
       </div>
     </section>

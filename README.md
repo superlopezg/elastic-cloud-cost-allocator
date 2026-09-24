@@ -37,36 +37,36 @@ It does **not** call Elastic Cloud APIs and does **not** change your cluster. Yo
 
 ## What’s in the box
 
-| Sheet | Purpose |
+| Sheet / UI | Purpose |
 |---|---|
-| **Measurement** | One row per index family / data-stream pattern: env (PRE / PRO / MON), events/s, KB/doc, docs, GB hot, GB frozen, index count, age. **Replace sample rows with your metrics.** |
-| **Parameters** | Editable yellow cells: hours/month, ECU/h rates (hot, frozen, Kibana…), snapshot monthly cost, annual commit, margin. Drives the surcharge math. |
-| **Without Admin Cost** | Per-family ECU/month using measured share only (no admin surcharge on the allocation rows). |
-| **With Admin Cost** | Same allocation **plus** the PRE/PRO surcharge that covers platform gap, egress/API, peak buffer and ops margin. |
-| **Sample Cloud Apps** | Example “client / workload” view: pick several Measurement families (cloud Kubernetes app logs) and get a rolled-up chargeback. |
-| **Sample OnPrem Apps** | Same pattern for on-prem Kubernetes app logs. |
-| **Any Family** | Pick **one** family name from Measurement and get the full step-by-step ECU calculation. |
+| **Environments** | **Configurable** list of clusters/envs (any codes: DEV, INT, UAT, PROD, MONITORING, …). Per-env rates + “Apply surcharge” flag. |
+| **Global** | Hours/month, annual ECU commit, margin, other annual ECU. Computes commit uplift. |
+| **Measurement** | One row per index family: **env code** (must match Environments), GB hot/frozen, optional events/s & KB/doc. |
+| **Without Admin Cost** | Per-family ECU/month using measured share only. |
+| **With Admin Cost** | Same + surcharge on environments marked for commit uplift. |
+| **Any Family** | Step-by-step calculation for one family (VLOOKUP rates by env). |
+| **Web UI** (`web/`) | Same model: add/rename/remove environments, ES/EN, CSV import/export. |
 
-Yellow cells are meant to be edited. Everything else is formula-driven.
+Sample workbook ships with example codes `PRE` / `PRO` / `MON` — they are **not required**. Rename or replace them for your client topology.
+
 
 ---
 
 ## How the allocation works
 
-1. **Measure** primary dataset size per family (GB hot, GB frozen) for PRE, PRO and Monitoring.
-2. **Share**  
-   - Hot (+ platform components you choose to fold in) → proportional to **GB hot**  
+1. **Define environments** (any number): code, ECU/h rates, snapshots/month, and whether commit **surcharge** applies.
+2. **Measure** primary dataset size per family (GB hot, GB frozen) tagged with an env code.
+3. **Share** within that environment:  
+   - Hot → proportional to **GB hot** in the same env  
    - Frozen + snapshots → proportional to **GB frozen** (falls back to hot share if frozen is zero)
-3. **Rate** → `ECU/h × hours/month` from Parameters (sample rates are illustrative).
-4. **Surcharge (optional)** → when annual commit + margin exceed the pure hot/frozen/snapshot formula for PRE+PRO, Parameters computes the uplift applied on the **With Admin Cost** sheet. Monitoring is billed on its own rows and is not double-counted into that uplift.
-
-Events/s and KB/doc are shown for context (noise, cardinality, retention conversations). They are **not** used in the ECU share.
+4. **Rate** → env rates × hours/month from Global / Parameters.
+5. **Surcharge (optional)** → environments with *Apply surcharge = TRUE* form the commit base; dedicated envs (e.g. monitoring) are billed at their own rate and deducted from the annual target when computing uplift.
 
 ```text
 family_ECU/month ≈
-    (GB_hot_family / GB_hot_cluster)   × ECU/h_hot   × hours
-  + (GB_frozen_family / GB_frozen_cluster) × (ECU/h_frozen × hours + snapshots/month)
-  + optional PRE/PRO surcharge
+    (GB_hot_family / GB_hot_env) × ECU/h_hot × hours
+  + (GB_frozen_family / GB_frozen_env) × (ECU/h_frozen × hours + snapshots/month)
+  + optional surcharge if the environment is marked
 ```
 
 ---
@@ -109,12 +109,14 @@ elastic-cloud-cost-allocator/
 ├── LICENSE
 ├── CONTRIBUTING.md
 ├── .gitignore
-├── elastic-cloud-cost-allocator.xlsx
+├── elastic-cloud-cost-allocator.xlsx   # Environments + Global + Measurement + Allocations
+├── scripts/rebuild_excel_envs.py      # regenerate Excel template
 └── web/
-    ├── index.html      # interactive calculator (Dot & Key look)
+    ├── index.html
     ├── styles.css
     ├── app.js
-    ├── seed.js         # fictional sample Measurement rows
+    ├── i18n.js
+    ├── seed.js
     └── logo-color.png
 ```
 

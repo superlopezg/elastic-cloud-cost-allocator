@@ -360,10 +360,27 @@ table.data .money { font-weight: 600; color: var(--dk-teal-dark); }
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 700;
+  background: var(--dk-teal-soft);
+  color: var(--dk-teal-dark);
 }
 .badge-PRE { background: #e8f0fe; color: #1a56db; }
 .badge-PRO { background: #fce7f3; color: #9d174d; }
 .badge-MON { background: #ecfdf3; color: #067647; }
+
+.row-warn td { background: #fff7ed !important; }
+.data--envs input[type="checkbox"] { width: auto; min-width: 0; }
+.env-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.env-usage-card {
+  border: 1px solid var(--dk-line);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  background: #fbfcfc;
+}
+.env-usage-card strong { display: block; }
 
 .steps {
   display: grid;
